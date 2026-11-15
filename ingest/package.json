@@ -1,0 +1,34 @@
+{
+  "name": "rate1-ingest",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Rate 1 ingest service (collect host): Data contract v1 §4-§10",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node dist/main.js",
+    "dev": "npm run build && node dist/main.js",
+    "cli": "node dist/cli.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "build:tracker": "npm --prefix ../tracker run build"
+  },
+  "dependencies": {
+    "fastify": "^5.12.8",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "ajv": "^8.20.0",
+    "esbuild": "^0.28.2",
+    "playwright-core": "1.65.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12"
+  }
+}

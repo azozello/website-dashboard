@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://collect.bazed.live/contract/v1/plugin-hello.schema.json",
+  "title": "POST /v1/plugin/hello body (Data contract v1 §8)",
+  "type": "object",
+  "required": ["v", "platform", "plugin_version", "wp_version", "php_version", "home_url", "theme", "head_hook_ok", "forms", "cache", "consent"],
+  "properties": {
+    "v": { "const": 1 },
+    "platform": { "const": "wordpress" },
+    "plugin_version": { "type": "string" },
+    "wp_version": { "type": "string" },
+    "php_version": { "type": "string" },
+    "home_url": { "type": "string", "pattern": "^https?://" },
+    "theme": { "type": "string" },
+    "head_hook_ok": { "type": "boolean" },
+    "forms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "id", "title"],
+        "properties": {
+          "source": { "enum": ["cf7", "elementor", "wpforms", "gravity"] },
+          "id": { "type": "string" },
+          "title": { "type": "string" }
+        }
+      }
+    },
+    "cache": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["plugin", "delay_js", "r1_excluded"],
+        "properties": {
+          "plugin": { "type": "string" },
+          "delay_js": { "type": ["boolean", "null"] },
+          "r1_excluded": { "type": "boolean" }
+        }
+      }
+    },
+    "consent": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["plugin", "r1_category"],
+        "properties": {
+          "plugin": { "type": "string" },
+          "r1_category": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rückenschmerzen | Physio Praxis</title>
+  <script defer src="{{COLLECT}}/v1/r1.js" data-site="{{KEY_PLAIN}}"></script>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; }
+    section { padding: 24px; border-bottom: 1px solid #ddd; }
+    .tall { height: 1400px; background: linear-gradient(#fff, #eef); }
+  </style>
+</head>
+<body>
+  <section data-r1-section="headline">
+    <h1>Rückenschmerzen behandeln</h1>
+    <p>
+      <a id="call" data-test-nonav href="tel:+4930123456">Jetzt anrufen</a> ·
+      <a id="mail" data-test-nonav href="mailto:info@praxis.example">E-Mail</a> ·
+      <a id="wa" data-test-nonav href="https://wa.me/4930123456">WhatsApp</a> ·
+      <button id="cta" data-r1-cta="booking">Termin buchen</button> ·
+      <a id="booking" href="/booking.html">Online-Termin</a>
+    </p>
+  </section>
+  <section class="tall">Inhalt</section>
+  <section id="prices" data-r1-section="prices"><h2>Preise</h2><p>Erstbehandlung 60 €</p></section>
+  <section class="tall">Mehr Inhalt</section>
+  <section data-r1-section="contact">
+    <h2>Kontakt</h2>
+    <form id="contact" action="/thanks.html" method="get">
+      <input name="name" value="Max Mustermann">
+      <button type="submit">Senden</button>
+    </form>
+  </section>
+  <script>
+    // Test-only: keep the page for links whose target can't load in a test.
+    document.addEventListener('click', function (e) {
+      if (e.target.closest && e.target.closest('[data-test-nonav]')) e.preventDefault();
+    });
+  </script>
+</body>
+</html>

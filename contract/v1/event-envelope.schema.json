@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://collect.bazed.live/contract/v1/event-envelope.schema.json",
+  "title": "POST /v1/e envelope (Data contract v1 §4)",
+  "description": "Strict sender-side schema: what r1.js may send. Receivers ignore unknown fields (§1); this schema rejects them so tests catch leaks.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "k", "wd", "test", "ev"],
+  "properties": {
+    "v": { "const": 1 },
+    "k": { "$ref": "common.schema.json#/$defs/siteKey" },
+    "wd": { "type": "boolean" },
+    "test": { "type": "boolean" },
+    "ev": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 25,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/pageview" },
+          { "$ref": "#/$defs/engage" },
+          { "$ref": "#/$defs/click" },
+          { "$ref": "#/$defs/step" },
+          { "$ref": "#/$defs/form_ok" }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "base": {
+      "type": "object",
+      "required": ["type", "eid", "pv", "path", "ts"],
+      "properties": {
+        "eid": { "$ref": "common.schema.json#/$defs/eid" },
+        "pv": { "$ref": "common.schema.json#/$defs/pv" },
+        "path": { "$ref": "common.schema.json#/$defs/path" },
+        "ts": { "$ref": "common.schema.json#/$defs/ts" }
+      }
+    },
+    "label60": { "type": "string", "maxLength": 60 },
+    "pageview": {
+      "allOf": [{ "$ref": "#/$defs/base" }],
+      "required": ["nav", "ref", "utm", "clid", "title", "vw", "load_ms"],
+      "unevaluatedProperties": false,
+      "properties": {
+        "type": { "const": "pageview" },
+        "nav": { "enum": ["load", "spa"] },
+        "ref": { "type": ["string", "null"], "maxLength": 255, "pattern": "^[^/?#\\s]+$" },
+        "utm": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "source": { "type": "string", "maxLength": 100 },
+            "medium": { "type": "string", "maxLength": 100 },
+            "campaign": { "type": "string", "maxLength": 100 },
+            "term": { "type": "string", "maxLength": 100 },
+            "content": { "type": "string", "maxLength": 100 }
+          }
+        },
+        "clid": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["gclid", "fbclid", "msclkid"] }
+        },
+        "title": { "type": "string", "maxLength": 200 },
+        "vw": { "type": "integer", "minimum": 0 },
+        "load_ms": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "engage": {
+      "allOf": [{ "$ref": "#/$defs/base" }],
+      "required": ["active_ms", "scroll", "sections", "final"],
+      "unevaluatedProperties": false,
+      "properties": {
+        "type": { "const": "engage" },
+        "active_ms": { "type": "integer", "minimum": 0 },
+        "scroll": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "sections": { "type": "array", "maxItems": 20, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 60 } },
+        "final": { "type": "boolean" }
+      }
+    },
+    "click": {
+      "allOf": [{ "$ref": "#/$defs/base" }],
+      "required": ["kind"],
+      "unevaluatedProperties": false,
+      "properties": {
+        "type": { "const": "click" },
+        "kind": { "enum": ["call", "whatsapp", "email", "booking_cta"] },
+        "label": { "$ref": "#/$defs/label60" }
+      }
+    },
+    "step": {
+      "allOf": [{ "$ref": "#/$defs/base" }],
+      "required": ["flow", "flow_id", "step"],
+      "unevaluatedProperties": false,
+      "properties": {
+        "type": { "const": "step" },
+        "flow": { "enum": ["booking", "calculator"] },
+        "flow_id": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "step": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "name": { "$ref": "#/$defs/label60" }
+      }
+    },
+    "form_ok": {
+      "allOf": [{ "$ref": "#/$defs/base" }],
+      "required": ["form"],
+      "unevaluatedProperties": false,
+      "properties": {
+        "type": { "const": "form_ok" },
+        "form": { "type": "string", "minLength": 1, "maxLength": 100 }
+      }
+    }
+  }
+}

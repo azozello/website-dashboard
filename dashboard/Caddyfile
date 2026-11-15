@@ -1,0 +1,33 @@
+# Serves the dashboard's static build inside the app container. TLS, HSTS and the public hostname are handled by
+# the edge Caddy (infra/caddy/Caddyfile), which proxies app.<domain> here. No access log.
+{
+	admin off
+	auto_https off
+}
+
+:3000 {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	# Vite puts content-hashed files under /assets/; everything else (index.html, SPA routes) must revalidate.
+	@hashed path /assets/*
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	@unhashed not path /assets/*
+	header @unhashed Cache-Control "no-cache"
+
+	handle /healthz {
+		header Content-Type application/json
+		respond `{"ok": true, "version": "{$APP_VERSION:dev}"}` 200
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

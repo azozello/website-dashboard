@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://collect.bazed.live/contract/v1/wix-webhook.schema.json",
+  "title": "POST /v1/w/{webhook_token} body (Data contract v1 §7)",
+  "description": "What the Wix custom structure should contain. The receiver keeps only these two keys and discards everything else.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["form"],
+  "properties": {
+    "form": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "submission_id": { "type": "string", "maxLength": 120 }
+  }
+}

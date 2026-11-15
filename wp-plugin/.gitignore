@@ -1,0 +1,4 @@
+/dist/
+/vendor/
+/tests/integration-results.json
+/tests/plugin-check-output.txt

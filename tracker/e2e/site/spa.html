@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Physio Praxis</title>
+  <!-- Wix: Settings → Custom Code → Head → All pages → "Load code once" -->
+  <script defer src="{{COLLECT}}/v1/r1.js" data-site="{{KEY_SPA}}"></script>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; }
+    nav a { margin-right: 12px; }
+    .tall { height: 1600px; }
+    .form-success { color: green; }
+  </style>
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="/spa/" data-link>Start</a>
+      <a href="/spa/preise" data-link id="nav-preise">Preise</a>
+      <a href="/spa/kontakt" data-link id="nav-kontakt">Kontakt</a>
+    </nav>
+  </header>
+  <main id="app"></main>
+  <script>
+    // A Wix-like client-side router: renders asynchronously after pushState,
+    // updates the title later, recreates forms on every route.
+    var pages = {
+      '/spa': { title: 'Start | Physio Praxis', html: '<h1>Willkommen</h1><div class="tall"></div>' },
+      '/spa/preise': {
+        title: 'Preise | Physio Praxis',
+        html: '<h1>Preise</h1><div class="tall"></div><section id="prices"><h2>Preisliste</h2><p>60 €</p></section><div class="tall"></div>',
+      },
+      '/spa/kontakt': {
+        title: 'Kontakt | Physio Praxis',
+        html:
+          '<h1>Kontakt</h1><form class="wix-form"><input name="email" value="max@example.com"><button type="submit" id="send">Senden</button></form>' +
+          '<div class="form-success" hidden>Danke für Ihre Nachricht!</div>',
+      },
+    };
+    function key() { return location.pathname.replace(/\/+$/, '') || '/spa'; }
+    function render() {
+      var page = pages[key()] || { title: 'Nicht gefunden', html: '<h1>404</h1>' };
+      var app = document.getElementById('app');
+      app.innerHTML = '';
+      setTimeout(function () {
+        app.innerHTML = page.html;
+        window.scrollTo(0, 0);
+        var f = app.querySelector('form');
+        if (f) f.addEventListener('submit', function (e) {
+          e.preventDefault();
+          setTimeout(function () { f.hidden = true; app.querySelector('.form-success').hidden = false; }, 300);
+        });
+      }, 30);
+      setTimeout(function () { document.title = page.title; }, 80);
+    }
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('a[data-link]');
+      if (!a) return;
+      e.preventDefault();
+      history.pushState({}, '', a.getAttribute('href'));
+      render();
+    });
+    window.addEventListener('popstate', render);
+    render();
+  </script>
+</body>
+</html>

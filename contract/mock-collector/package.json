@@ -1,0 +1,13 @@
+{
+  "name": "rate1-mock-collector",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Mock collector that validates every payload against contract/v1 JSON Schemas",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1"
+  }
+}

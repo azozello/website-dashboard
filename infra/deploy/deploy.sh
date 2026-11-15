@@ -6,8 +6,14 @@ cd "$(dirname "$0")/.."
 ENV_FILE="${RATE1_ENV_FILE:-/opt/rate1/.env}"
 dc() { docker compose --project-name rate1 --env-file "$ENV_FILE" -f docker-compose.yml "$@"; }
 
+# Shown by GET /healthz on both hosts, so a deploy can be checked from outside.
+APP_VERSION="$(git rev-parse --short HEAD)"
+export APP_VERSION
+
 dc config --quiet
-dc pull --quiet
+dc pull --quiet --ignore-buildable
+# ingest and app are built here from the checked-out commit; --pull refreshes the node/caddy base images.
+dc build --pull
 dc up -d --remove-orphans --wait --wait-timeout 180
 
 # When Compose recreates a network it can reattach a container without its service alias, so Caddy can no longer
@@ -23,5 +29,6 @@ done
 # Caddy reads ./caddy as a directory mount, so a changed Caddyfile only needs a reload.
 dc exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 docker image prune -f >/dev/null
+docker builder prune -f --filter until=168h >/dev/null 2>&1 || true
 dc ps --format 'table {{.Service}}\t{{.Image}}\t{{.Status}}'
 echo "deploy.sh: done"

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://collect.bazed.live/contract/v1/common.schema.json",
+  "title": "Shared definitions (Data contract v1 §1)",
+  "$defs": {
+    "siteKey": { "type": "string", "pattern": "^pk_[0-9A-Za-z]{24}$" },
+    "pv": { "type": "string", "pattern": "^[0-9A-Za-z]{16}$" },
+    "eid": { "type": "string", "pattern": "^[0-9A-Za-z]{8}$" },
+    "path": { "type": "string", "pattern": "^/", "maxLength": 512 },
+    "ts": { "type": "integer", "minimum": 0 }
+  }
+}

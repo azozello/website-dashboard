@@ -1,0 +1,11 @@
+{
+  "endpoint": "POST /v1/plugin/hello",
+  "valid": [
+    {"name": "contract example", "body": {"v": 1, "platform": "wordpress", "plugin_version": "0.1.0", "wp_version": "6.9", "php_version": "8.3", "home_url": "https://wp-test.example", "theme": "astra", "head_hook_ok": true, "forms": [{"source": "cf7", "id": "12", "title": "Contact"}, {"source": "elementor", "id": "a1b2c3", "title": "Quick enquiry"}], "cache": [{"plugin": "wp-rocket", "delay_js": true, "r1_excluded": true}], "consent": [{"plugin": "borlabs-cookie", "r1_category": "unknown"}]}},
+    {"name": "bare site, head hook failed, optional extra field", "body": {"v": 1, "platform": "wordpress", "plugin_version": "0.1.0", "wp_version": "6.4", "php_version": "7.4", "home_url": "http://localhost:8088", "theme": "twentytwentyfive", "head_hook_ok": false, "head_hook_error": "tag_missing", "forms": [], "cache": [], "consent": []}}
+  ],
+  "invalid": [
+    {"name": "wrong version", "field": "v", "body": {"v": 2, "platform": "wordpress"}},
+    {"name": "no platform", "field": "platform", "body": {"v": 1, "plugin_version": "0.1.0"}}
+  ]
+}
