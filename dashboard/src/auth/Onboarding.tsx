@@ -57,7 +57,7 @@ export function Onboarding() {
   return <AddSite orgId={orgId} orgs={manageable} onOrg={setOrgId} onCreated={setCreated} canCancel={me.sites.length > 0} />;
 }
 
-function CreateOrg({ onCreated }: { onCreated: (id: string) => void }) {
+export function CreateOrg({ onCreated, lead }: { onCreated: (id: string) => void; lead?: string }) {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -74,7 +74,7 @@ function CreateOrg({ onCreated }: { onCreated: (id: string) => void }) {
   }
 
   return (
-    <AuthCard title="Set up your organisation" lead="Your organisation owns your websites. You can invite colleagues to it later.">
+    <AuthCard title="Set up your organisation" lead={lead ?? 'Your organisation owns your websites. You can invite colleagues to it later.'}>
       <form onSubmit={submit} className="form">
         <Field label="Organisation name" placeholder="e.g. Physio Example GmbH" required value={name} onChange={(e) => setName(e.target.value)} />
         <ErrorLine>{error}</ErrorLine>

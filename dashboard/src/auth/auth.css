@@ -85,3 +85,10 @@
   .auth-card{padding:22px 18px}
   .members th:first-child,.members td:first-child{position:static;min-width:0;box-shadow:none}
 }
+
+/* "No data yet" screen */
+.nodata{padding:14px 22px 20px;display:flex;flex-direction:column;gap:12px}
+.nodata ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.nodata p{margin:0}
+.choices{margin:0;padding:0;border:0;display:flex;flex-direction:column;gap:10px}
+.choices legend{padding:0 0 6px;font-size:14px;font-weight:500}

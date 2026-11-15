@@ -14,10 +14,11 @@ set_error_handler(
 
 define( 'ABSPATH', __DIR__ . '/' );
 define( 'DAY_IN_SECONDS', 86400 );
-define( 'RATE1_CONNECTOR_VERSION', '0.1.0' );
+define( 'RATE1_CONNECTOR_VERSION', '0.2.0' );
 define( 'RATE1_CONNECTOR_FILE', dirname( __DIR__, 2 ) . '/rate1-connector/rate1-connector.php' );
 define( 'RATE1_CONNECTOR_DIR', dirname( __DIR__, 2 ) . '/rate1-connector/' );
 define( 'RATE1_CONNECTOR_COLLECT_URL', 'https://collect.bazed.live' );
+define( 'RATE1_CONNECTOR_APP_URL', 'https://app.bazed.live' );
 define( 'CONTRACT_DIR', dirname( __DIR__, 3 ) . '/contract/v1' );
 
 /** Global test state. */
@@ -33,6 +34,7 @@ class WP_Stub {
 	public static $logged_in = false;
 	public static $caps      = array();
 	public static $spawned   = 0;
+	public static $transients = array();
 
 	public static function reset() {
 		self::$options   = array();
@@ -46,6 +48,7 @@ class WP_Stub {
 		self::$logged_in = false;
 		self::$caps      = array();
 		self::$spawned   = 0;
+		self::$transients = array();
 		$_POST           = array();
 		$_SERVER['HTTP_REFERER'] = null;
 	}
@@ -174,9 +177,14 @@ function wp_remote_post( $url, $args ) {
 	if ( 0 === $r ) {
 		return new WP_Error( 'http_request_failed', 'timeout' );
 	}
+	// A response is a status code, or array( status, body ).
+	$body = '{"ok":true}';
+	if ( is_array( $r ) ) {
+		list( $r, $body ) = $r;
+	}
 	return array(
 		'response' => array( 'code' => $r ),
-		'body'     => '{"ok":true}',
+		'body'     => $body,
 	);
 }
 function wp_remote_get( $url, $args ) {
@@ -217,6 +225,22 @@ function wp_parse_url( $url, $component = -1 ) {
 function home_url( $path = '' ) {
 	return WP_Stub::$home . $path;
 }
+function admin_url( $path = '' ) {
+	return WP_Stub::$home . '/wp-admin/' . $path;
+}
+
+// ---- transients (no expiry in tests) ----
+function get_transient( $name ) {
+	return array_key_exists( $name, WP_Stub::$transients ) ? WP_Stub::$transients[ $name ] : false;
+}
+function set_transient( $name, $value, $ttl = 0 ) {
+	WP_Stub::$transients[ $name ] = $value;
+	return true;
+}
+function delete_transient( $name ) {
+	unset( WP_Stub::$transients[ $name ] );
+	return true;
+}
 function untrailingslashit( $s ) {
 	return rtrim( $s, '/\\' );
 }
@@ -251,6 +275,7 @@ require RATE1_CONNECTOR_DIR . 'includes/class-rate1-connector-sender.php';
 require RATE1_CONNECTOR_DIR . 'includes/class-rate1-connector-forms.php';
 require RATE1_CONNECTOR_DIR . 'includes/class-rate1-connector-compat.php';
 require RATE1_CONNECTOR_DIR . 'includes/class-rate1-connector-hello.php';
+require RATE1_CONNECTOR_DIR . 'includes/class-rate1-connector-connect.php';
 
 // ---- assertions ----
 class T {

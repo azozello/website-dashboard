@@ -49,6 +49,8 @@ The session's active organisation never grants access. A site with `org_id = NUL
 | POST | `/api/orgs/:orgId/sites` | admin | add a site; returns the site secret (and Wix webhook URL) once |
 | GET | `/api/sites/:siteId` | member | site details (never secrets) |
 | PATCH | `/api/sites/:siteId` | admin | rename, change allowed origins |
+| POST | `/api/orgs/:orgId/connect/wordpress` | admin | WordPress connect step 2: `{homeUrl, returnUrl, state, siteId?}` → uses that WordPress site or creates one for the WordPress origin, returns `redirectUrl` = `returnUrl?code=…&state=…` |
+| POST | `/api/connect/exchange` | public (the code) | WordPress connect step 3, server to server: `{code}` → `{site_key, site_secret}` |
 | GET | `/healthz` | public | `{ ok, version }` |
 
 New dashboard data endpoints go under `/api/sites/:siteId/…` with `preHandler: requireSite('member')` and filter every query by `request.tenant.siteId`.
@@ -90,9 +92,16 @@ server {
 
 Production uses Caddy instead: `infra/caddy/Caddyfile` sends `app.<domain>/api/*` to the `api` service and the rest to the static dashboard. `api/Dockerfile` builds the image; `infra/docker-compose.yml` runs `api-migrate` (migrations as the superuser, once per deploy) and then `api` (as `app_rw`). See `infra/README.md`.
 
+## WordPress connect (contract §8)
+
+1. The plugin's "Connect to Rate 1" sends the admin to `/connect/wordpress?home_url=…&return_url=…&state=…` (dashboard page; sign-in first if needed).
+2. An owner/admin of the organisation picks a WordPress site that already allows that origin, or adds the origin as a new site, and confirms. The API issues a one-time code (32 random bytes; stored as SHA-256 in `connect_codes`, valid 5 minutes) and the browser goes to `return_url?code=…&state=…`.
+3. The plugin checks `state` and calls `POST /api/connect/exchange`. The code is redeemed once by `app_connect_exchange()` (`SECURITY DEFINER`, because there is no signed-in user and so no tenant to satisfy row-level security on `sites`); the response carries the site key and a **new** site secret, because only the secret's hash is stored. Connecting therefore rotates the secret; anything else using the old one must be updated.
+
+The code buys the secret, so it may only go back to the WordPress site: `return_url` must be on the same origin as `home_url` (https when deployed, except localhost), and an existing site must already list that origin. Cancelling returns `return_url?error=access_denied&state=…`.
+
 ## Not done yet
 
-- WordPress connect handoff (contract §8: `/connect/wordpress`, one-time code, `/api/connect/exchange`).
 - Postgres row-level security as a second layer behind the guards.
 - Changing a member's role from the UI (Better Auth supports it; no screen yet).
 - Google sign-in was not exercised end to end (needs a Google OAuth client).

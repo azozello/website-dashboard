@@ -1,6 +1,6 @@
 # Rate 1 dashboard (W4)
 
-Front end for the PoC dashboard. Vite + React + TypeScript, React Router. Sign-in, organisations and the site list are real (served by `../api`); the dashboard numbers still come from `src/mock/data.ts`, ported 1:1 from the design prototype.
+Front end for the PoC dashboard. Vite + React + TypeScript, React Router. Sign-in, organisations, the site list and the WordPress connect page are served by `../api`. There is no site data yet: every site view shows a setup screen (`src/views/NoData.tsx`) until `src/data/model.ts` is filled from the data API. The views themselves are ported 1:1 from the design prototype.
 
 ```bash
 npm install
@@ -16,18 +16,18 @@ Emails sent in development (confirmation links, sign-in codes, invitations) appe
 | --- | --- |
 | `src/auth/` | Better Auth client, session gate (`RequireAuth`, `/api/me`), sign-in screens, onboarding, security and members settings, top-bar menus |
 | `src/site.ts` | Site-scoped paths: every dashboard view lives under `/s/:siteId` |
-| `src/mock/data.ts` | Demo pages, changes, requests and the 52-week series generator |
+| `src/data/model.ts` | Shapes the views render (pages, weekly series, changes, requests) and the site's data, empty for now |
 | `src/lib/analysis.ts` | Period totals, page diagnosis, potential, device split, change markers |
 | `src/lib/format.ts`, `metrics.ts` | Number formatting and the six metric definitions |
 | `src/components/` | Layout (top bar, rail), metric cards, trend chart, sortable table, small UI pieces |
-| `src/views/` | Overview, page detail, and the site-wide views (search terms, sources, devices, contact options, click paths, changes, requests) |
+| `src/views/` | Overview, page detail, the site-wide views (search terms, sources, devices, contact options, click paths, changes, requests), and `NoData` (setup screen while there is no data) |
 | `src/styles.css` | Styles copied verbatim from the prototype; `src/auth/auth.css` adds the sign-in and settings styles |
 
 ## Routes
 
 Signed out: `/login` · `/signup` · `/check-email` · `/forgot-password` · `/reset-password` · `/two-factor` · `/invite/:id`
 
-Signed in: `/` (last opened site, else onboarding) · `/onboarding` (create organisation, add website) · `/settings/security` (MFA, password) · `/orgs/:orgId/members` (members, invitations)
+Signed in: `/` (last opened site, else onboarding) · `/onboarding` (create organisation, add website) · `/connect/wordpress` (the plugin's one-click connect, contract §8) · `/settings/security` (MFA, password) · `/orgs/:orgId/members` (members, invitations)
 
 Per site, under `/s/:siteId`: overview · `pages/:slug` page detail (`home` for `/`) · `search-terms` · `sources` · `devices` · `contact-options` · `click-paths` · `changes` · `requests`
 
@@ -35,4 +35,4 @@ The UI only offers sites listed by `/api/me`; the API checks access again on eve
 
 ## Next
 
-Swap `src/mock/data.ts` for calls to `/api/sites/:siteId/…` (tables in `specs/Data-Contract-v1.md` §10, metric definitions in §11).
+Fill `src/data/model.ts` from `/api/sites/:siteId/…` (tables in `specs/Data-Contract-v1.md` §10, metric definitions in §11); the views render as soon as `SITE` has weeks.

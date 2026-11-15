@@ -1,12 +1,14 @@
 import { useEffect } from 'react';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { ConnectWordPress } from './auth/Connect';
 import { Onboarding } from './auth/Onboarding';
 import { CheckEmail, ForgotPassword, Invite, Login, ResetPassword, Signup, TwoFactor } from './auth/pages';
 import { Home, RequireAuth, rememberSite, useMe } from './auth/session';
 import { Members, Security } from './auth/Settings';
 import { Layout } from './components/Layout';
-import { BY_SLUG } from './mock/data';
+import { BY_SLUG, hasData } from './data/model';
 import { sitePath, useSiteId } from './site';
+import { NoData } from './views/NoData';
 import { Overview } from './views/Overview';
 import { PageDetail } from './views/PageDetail';
 import { Changes, ClickPaths, ContactOptions, Devices, Requests, SearchTerms, Sources } from './views/SiteViews';
@@ -30,6 +32,14 @@ function SiteRoutes() {
     if (allowed) rememberSite(siteId);
   }, [allowed, siteId]);
   if (!allowed) return <Navigate to="/" replace />;
+  // No data API yet: every view shows the setup screen instead of running on empty data.
+  if (!hasData()) {
+    return (
+      <Layout>
+        <NoData />
+      </Layout>
+    );
+  }
   return (
     <Layout>
       <Routes>
@@ -64,6 +74,7 @@ export function App() {
       <Route element={<RequireAuth />}>
         <Route path="/" element={<Home />} />
         <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/connect/wordpress" element={<ConnectWordPress />} />
         <Route path="/settings/security" element={<Security />} />
         <Route path="/orgs/:orgId/members" element={<Members />} />
         <Route path="/s/:siteId/*" element={<SiteRoutes />} />

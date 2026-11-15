@@ -1,7 +1,7 @@
 import type { Totals } from '../lib/analysis';
 import { cssVars } from '../lib/format';
 import { METRICS, type MetricKey } from '../lib/metrics';
-import { PAGES } from '../mock/data';
+import { PAGES } from '../data/model';
 import type { ShowState } from '../state';
 import { Change } from './ui';
 

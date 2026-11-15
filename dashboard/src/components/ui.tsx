@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useSiteNavigate } from '../site';
-import type { Page, Tone } from '../mock/data';
+import type { Page, Tone } from '../data/model';
 import { change, cssVars, TONE } from '../lib/format';
 import type { Flag } from '../lib/analysis';
 

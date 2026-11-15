@@ -6,7 +6,7 @@ import { TrendChart } from '../components/TrendChart';
 import { Bar, ChangesLine, Muted, Panel, VRows, type VRow } from '../components/ui';
 import { flagsFor, pageStats, periods, rangeName, reachAt, totals, type DeviceRow } from '../lib/analysis';
 import { cssVars, fi, fp, fp0, mmss, TONE } from '../lib/format';
-import { CHANGES, INQUIRIES, SITE, type Page } from '../mock/data';
+import { CHANGES, INQUIRIES, SITE, type Page } from '../data/model';
 import { useDashboard } from '../state';
 import { ChangesTable, InquiryTable } from './shared';
 

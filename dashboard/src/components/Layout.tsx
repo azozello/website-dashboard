@@ -4,7 +4,7 @@ import { SiteSwitcher, UserMenu } from '../auth/menus';
 import { useMe } from '../auth/session';
 import { Logo } from '../auth/ui';
 import { RANGES } from '../lib/analysis';
-import { PAGES } from '../mock/data';
+import { PAGES } from '../data/model';
 import { sitePath, useSiteId, useSiteNavigate } from '../site';
 import { useDashboard } from '../state';
 import { pagePath } from './ui';
@@ -47,7 +47,6 @@ function TopBar() {
           </button>
         ))}
       </div>
-      <span className="demo">Demo data</span>
       <UserMenu orgId={orgId} />
     </header>
   );
@@ -81,17 +80,15 @@ function Rail() {
   return (
     <nav ref={ref} className="rail" aria-label="Sections">
       {item('/', 'Overview')}
-      <div className="label">Pages</div>
-      {PAGES.map((p) => item(pagePath(p), p.name, true))}
+      {PAGES.length > 0 && (
+        <>
+          <div className="label">Pages</div>
+          {PAGES.map((p) => item(pagePath(p), p.name, true))}
+        </>
+      )}
       <div className="sep" />
       <div className="label">All pages combined</div>
       {SITE_VIEWS.map(([to, label]) => item(to, label))}
-      <div className="sep" />
-      <div className="client">
-        <b>Plan:</b> Rate 1
-        <br />
-        Next review: Nov 4
-      </div>
     </nav>
   );
 }
