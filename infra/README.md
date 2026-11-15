@@ -126,12 +126,14 @@ Two layers:
   Hetzner backup; copy one off the server for an independent copy:
   `scp ops@<ip>:/opt/rate1/backups/<file>.dump .` (as `ops`: `sudo cp` it to `/tmp` and `chown` first).
 
+`/opt/rate1` belongs to `deploy` (mode 750), so as `ops` use absolute paths through `sudo -u deploy`:
+
 ```bash
 # on the server, as ops
-cd /opt/rate1/repo/infra
-sudo -u deploy -H backup/pg-backup.sh                                   # dump now
-ls -l /opt/rate1/backups/
-sudo -u deploy -H backup/pg-restore.sh /opt/rate1/backups/<file>.dump rate1_restore   # restore to a scratch db
+R=/opt/rate1/repo/infra
+sudo -u deploy -H $R/backup/pg-backup.sh                                   # dump now
+sudo ls -l /opt/rate1/backups/
+sudo -u deploy -H $R/backup/pg-restore.sh /opt/rate1/backups/<file>.dump rate1_restore   # restore to a scratch db
 docker exec rate1-postgres-1 psql -U postgres -d rate1_restore -c '\dt'              # check it
 docker exec rate1-postgres-1 dropdb -U postgres rate1_restore                         # clean up
 ```
@@ -139,11 +141,11 @@ docker exec rate1-postgres-1 dropdb -U postgres rate1_restore                   
 Replace the live database with a dump (downtime for ingest and app):
 
 ```bash
-cd /opt/rate1/repo/infra
-dc() { sudo -u deploy -H docker compose --project-name rate1 --env-file /opt/rate1/.env -f docker-compose.yml "$@"; }
+R=/opt/rate1/repo/infra
+dc() { sudo -u deploy -H docker compose --project-name rate1 --env-file /opt/rate1/.env -f $R/docker-compose.yml "$@"; }
 dc stop ingest app
 docker exec rate1-postgres-1 psql -U postgres -c 'ALTER DATABASE rate1 RENAME TO rate1_old'
-sudo -u deploy -H backup/pg-restore.sh /opt/rate1/backups/<file>.dump rate1
+sudo -u deploy -H $R/backup/pg-restore.sh /opt/rate1/backups/<file>.dump rate1
 docker exec rate1-postgres-1 psql -U postgres -c 'GRANT CONNECT, TEMPORARY ON DATABASE rate1 TO ingest_rw, app_rw'
 dc start ingest app
 # when happy: docker exec rate1-postgres-1 dropdb -U postgres rate1_old
