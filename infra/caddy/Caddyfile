@@ -1,0 +1,50 @@
+{
+	# HTTP/3 off: the Hetzner firewall only opens TCP 443.
+	servers {
+		protocols h1 h2
+	}
+
+	# Caddy's own runtime/error logs: strip client addresses so no visitor IP is ever written.
+	# (Access logs are not enabled for any site; see below.)
+	log {
+		format filter {
+			wrap json
+			fields {
+				remote delete
+				request>remote_ip delete
+				request>remote_port delete
+				request>client_ip delete
+				request>headers>X-Forwarded-For delete
+				request>headers>Cf-Connecting-Ip delete
+				request>headers>Cookie delete
+			}
+		}
+	}
+}
+
+# Tracking host. No `log` directive => no access log. Must never set cookies.
+collect.{$DOMAIN} {
+	request_body /v1/e {
+		max_size 16KiB
+	}
+
+	header {
+		-Set-Cookie
+		defer
+	}
+
+	# Caddy sets X-Forwarded-For to the real client address (it trusts no upstream proxy,
+	# so a spoofed X-Forwarded-For from the client is replaced).
+	reverse_proxy ingest:8080 {
+		header_down -Set-Cookie
+	}
+}
+
+app.{$DOMAIN} {
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	reverse_proxy app:3000
+}
+
+{$DOMAIN} {
+	redir https://app.{$DOMAIN}{uri} 302
+}

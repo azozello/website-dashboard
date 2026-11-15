@@ -1,0 +1,102 @@
+#cloud-config
+# First-boot bootstrap for the Rate 1 server. Runs once; later changes are deployed by CI (see infra/README.md).
+# Rendered by Terraform: ${"$"}{...} is Terraform interpolation; plain $VAR is left for the shell.
+
+users:
+  - name: ${admin_user}
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${admin_key}
+  - name: deploy
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      # CI key: can only run rate1-deploy <ref>; no shell, no forwarding, no pty.
+      - restrict,command="/usr/local/bin/rate1-deploy" ${deploy_key}
+
+disable_root: true
+ssh_pwauth: false
+
+package_update: true
+package_upgrade: true
+packages:
+  - unattended-upgrades
+  - docker.io
+  - docker-compose-v2
+  - git
+  - ca-certificates
+  - curl
+  - openssl
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/10-rate1.conf
+    content: |
+      PermitRootLogin no
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PubkeyAuthentication yes
+      AllowUsers ${admin_user} deploy
+
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+  # Bounded container logs.
+  - path: /etc/docker/daemon.json
+    content: |
+      {"log-driver": "json-file", "log-opts": {"max-size": "10m", "max-file": "3"}}
+
+  - path: /usr/local/bin/rate1-deploy
+    permissions: "0755"
+    content: |
+      ${indent(6, rate1_deploy)}
+
+  # Nightly pg_dump, 7 days kept (script lives in the repo).
+  - path: /etc/cron.d/rate1-backup
+    content: |
+      15 2 * * * deploy /opt/rate1/repo/infra/backup/pg-backup.sh >> /opt/rate1/backups/backup.log 2>&1
+
+  - path: /usr/local/sbin/rate1-bootstrap
+    permissions: "0700"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      usermod -aG docker ${admin_user}
+      usermod -aG docker deploy
+      systemctl enable --now docker
+      systemctl restart ssh
+
+      install -d -o deploy -g deploy -m 0750 /opt/rate1
+      install -d -o deploy -g deploy -m 0700 /opt/rate1/backups
+      [ -d /opt/rate1/repo/.git ] || sudo -u deploy -H git clone --quiet ${repo_url} /opt/rate1/repo
+
+      # Secrets are generated here and never leave the server.
+      if [ ! -f /opt/rate1/.env ]; then
+        umask 077
+        cat > /opt/rate1/.env <<EOF
+      ENV=test
+      DOMAIN=${domain}
+      COLLECT_BASE_URL=https://collect.${domain}
+      APP_BASE_URL=https://app.${domain}
+      TRUSTED_PROXY_CIDRS=172.30.0.0/24,fd00:30::/64
+      CLIENT_IP_HEADER=X-Forwarded-For
+      GOOGLE_CLIENT_ID=
+      GOOGLE_CLIENT_SECRET=
+      TOKEN_ENCRYPTION_KEY=$(openssl rand -base64 32)
+      POSTGRES_PASSWORD=$(openssl rand -hex 24)
+      INGEST_DB_PASSWORD=$(openssl rand -hex 24)
+      APP_DB_PASSWORD=$(openssl rand -hex 24)
+      INGEST_IMAGE=
+      APP_IMAGE=
+      EOF
+        chown deploy:deploy /opt/rate1/.env
+      fi
+
+      sudo -u deploy -H /usr/local/bin/rate1-deploy ${bootstrap_ref}
+
+runcmd:
+  - [/usr/local/sbin/rate1-bootstrap]

@@ -1,0 +1,96 @@
+# Rate 1 PoC stack. Deployed by infra/deploy/deploy.sh with --env-file /opt/rate1/.env (server only).
+name: rate1
+
+services:
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-bazed.live}
+    volumes:
+      # Directory mount (not a single file) so a git checkout of a new Caddyfile is visible to `caddy reload`.
+      - ./caddy:/etc/caddy:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [edge]
+
+  ingest:
+    # Placeholder until W3 publishes the real image: traefik/whoami echoes the request headers it receives.
+    image: ${INGEST_IMAGE:-traefik/whoami:v1.10}
+    restart: unless-stopped
+    environment:
+      WHOAMI_PORT_NUMBER: "8080"
+      WHOAMI_NAME: ingest-placeholder
+      ENV: ${ENV}
+      DATABASE_URL: postgres://ingest_rw:${INGEST_DB_PASSWORD}@postgres:5432/rate1
+      COLLECT_BASE_URL: ${COLLECT_BASE_URL}
+      APP_BASE_URL: ${APP_BASE_URL}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS}
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [edge, internal]
+
+  app:
+    # Placeholder until W4 publishes the real image: answers every path (incl. GET /healthz) with 200.
+    image: ${APP_IMAGE:-traefik/whoami:v1.10}
+    restart: unless-stopped
+    environment:
+      WHOAMI_PORT_NUMBER: "3000"
+      WHOAMI_NAME: app-placeholder
+      ENV: ${ENV}
+      DATABASE_URL: postgres://app_rw:${APP_DB_PASSWORD}@postgres:5432/rate1
+      COLLECT_BASE_URL: ${COLLECT_BASE_URL}
+      APP_BASE_URL: ${APP_BASE_URL}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [edge, internal]
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rate1
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in /opt/rate1/.env}
+      INGEST_DB_PASSWORD: ${INGEST_DB_PASSWORD:?set in /opt/rate1/.env}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set in /opt/rate1/.env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rate1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [internal]
+
+networks:
+  # Caddy + the two web services. Its CIDRs are TRUSTED_PROXY_CIDRS for ingest: Caddy is the only proxy in it.
+  # IPv6 must be on: without it Docker relays IPv6 clients through docker-proxy and every IPv6 visitor
+  # reaches Caddy as the gateway 172.30.0.1 instead of their real address.
+  edge:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+        - subnet: fd00:30::/64
+  # Database network: no route to the internet, no published ports.
+  internal:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.1.0/24
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pgdata:

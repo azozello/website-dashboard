@@ -1,0 +1,30 @@
+#!/bin/bash
+# Installed at /usr/local/bin/rate1-deploy by cloud-init (copied once at server creation).
+# It is the forced command for the CI deploy key: `ssh deploy@<server> <git sha or branch>`.
+# Admins can run it too: sudo -u deploy -H rate1-deploy main
+set -euo pipefail
+
+REF="${SSH_ORIGINAL_COMMAND:-${1:-main}}"
+if [[ ! "$REF" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$ ]]; then
+  echo "rate1-deploy: invalid ref" >&2
+  exit 2
+fi
+if [ "$(id -un)" != "deploy" ]; then
+  echo "rate1-deploy: run as the deploy user" >&2
+  exit 2
+fi
+
+# One deploy at a time.
+exec 9>/opt/rate1/deploy.lock
+flock -w 600 9
+
+cd /opt/rate1/repo
+git fetch --quiet --prune origin
+if git rev-parse --verify --quiet "origin/$REF^{commit}" >/dev/null; then
+  target="origin/$REF"
+else
+  target="$REF"
+fi
+git checkout --quiet --force --detach "$target"
+echo "rate1-deploy: deploying $(git rev-parse --short HEAD) ($REF)"
+exec infra/deploy/deploy.sh

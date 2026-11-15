@@ -1,0 +1,12 @@
+# Secrets and state never go into git.
+.env
+*.env
+!.env.example
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/terraform.tfvars
+terraform/*.auto.tfvars
+terraform/crash.log
+*.dump
+terraform/*.tfplan

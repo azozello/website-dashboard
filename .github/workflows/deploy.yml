@@ -1,0 +1,91 @@
+# Deploys main to the Hetzner server on every merge (push) to main.
+#
+# The server's firewall only allows SSH from the admin's IP, so this job:
+#   1. adds the runner's IP to the Hetzner firewall (port 22),
+#   2. runs `ssh deploy@<server> <sha>` - the deploy key is forced to /usr/local/bin/rate1-deploy,
+#      which checks out that commit and runs infra/deploy/deploy.sh,
+#   3. always removes the firewall rule again.
+#
+# Repository secrets:   HCLOUD_TOKEN (Hetzner API token, read/write), DEPLOY_SSH_KEY (private deploy key)
+# Repository variables: DEPLOY_HOST (server IPv4), DEPLOY_KNOWN_HOSTS (ssh-keyscan line for the host),
+#                       HCLOUD_FIREWALL (firewall name, default rate1-fw)
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+      HCLOUD_VERSION: v1.70.2
+      FIREWALL: ${{ vars.HCLOUD_FIREWALL || 'rate1-fw' }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+    steps:
+      - name: Check configuration
+        env:
+          HAS_DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY != '' }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          missing=0
+          for v in HCLOUD_TOKEN DEPLOY_HOST DEPLOY_KNOWN_HOSTS; do
+            [ -n "${!v}" ] || { echo "::error::$v is not set"; missing=1; }
+          done
+          [ "$HAS_DEPLOY_KEY" = "true" ] || { echo "::error::secret DEPLOY_SSH_KEY is not set"; missing=1; }
+          exit $missing
+
+      - name: Install hcloud CLI
+        run: |
+          curl -fsSL -o /tmp/hcloud.tgz "https://github.com/hetznercloud/cli/releases/download/${HCLOUD_VERSION}/hcloud-linux-amd64.tar.gz"
+          sudo tar -xzf /tmp/hcloud.tgz -C /usr/local/bin hcloud
+          hcloud version
+
+      - name: Open SSH for this runner
+        id: open
+        run: |
+          ip="$(curl -fsS -4 https://api.ipify.org)"
+          echo "ip=$ip" >> "$GITHUB_OUTPUT"
+          hcloud firewall add-rule "$FIREWALL" --direction in --protocol tcp --port 22 \
+            --source-ips "$ip/32" --description "gha-deploy-${GITHUB_RUN_ID}"
+
+      - name: Deploy ${{ github.sha }}
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh_cmd=(ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 "deploy@${DEPLOY_HOST}")
+          # The firewall change takes a few seconds to apply.
+          for i in $(seq 1 12); do
+            rc=0
+            "${ssh_cmd[@]}" "$GITHUB_SHA" || rc=$?
+            [ $rc -eq 0 ] && exit 0
+            [ $rc -eq 255 ] || exit $rc   # 255 = SSH could not connect; anything else is a deploy failure
+            echo "SSH not reachable yet (attempt $i), retrying in 5 s"
+            sleep 5
+          done
+          exit 1
+
+      - name: Close SSH for this runner
+        if: always() && steps.open.outputs.ip != ''
+        run: |
+          hcloud firewall delete-rule "$FIREWALL" --direction in --protocol tcp --port 22 \
+            --source-ips "${{ steps.open.outputs.ip }}/32" --description "gha-deploy-${GITHUB_RUN_ID}"
+
+      - name: Smoke test
+        run: |
+          curl -fsS -o /dev/null -w 'collect: %{http_code}\n' https://collect.${{ vars.DOMAIN || 'bazed.live' }}/
+          curl -fsS -o /dev/null -w 'app /healthz: %{http_code}\n' https://app.${{ vars.DOMAIN || 'bazed.live' }}/healthz
