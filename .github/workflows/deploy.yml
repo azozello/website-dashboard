@@ -87,5 +87,6 @@ jobs:
 
       - name: Smoke test
         run: |
-          curl -fsS -o /dev/null -w 'collect: %{http_code}\n' https://collect.${{ vars.DOMAIN || 'bazed.live' }}/
+          # Data Contract §2: GET /healthz answers 200 on both hosts.
+          curl -fsS -o /dev/null -w 'collect /healthz: %{http_code}\n' https://collect.${{ vars.DOMAIN || 'bazed.live' }}/healthz
           curl -fsS -o /dev/null -w 'app /healthz: %{http_code}\n' https://app.${{ vars.DOMAIN || 'bazed.live' }}/healthz
