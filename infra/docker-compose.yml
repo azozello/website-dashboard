@@ -101,9 +101,9 @@ services:
       APP_BASE_URL: ${APP_BASE_URL}
       COLLECT_BASE_URL: ${COLLECT_BASE_URL}
       CLIENT_IP_HEADER: ${CLIENT_IP_HEADER}
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in /opt/rate1/.env}
-      SMTP_URL: ${SMTP_URL:?set SMTP_URL in /opt/rate1/.env}
-      MAIL_FROM: ${MAIL_FROM:?set MAIL_FROM in /opt/rate1/.env}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?missing; deploy.sh generates it (infra/deploy/merge-secrets.sh)}
+      SMTP_URL: ${SMTP_URL:?missing; add the SMTP_URL GitHub secret and run the Deploy workflow}
+      MAIL_FROM: ${MAIL_FROM:?missing; deploy.sh sets a default (infra/deploy/merge-secrets.sh)}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
     healthcheck:

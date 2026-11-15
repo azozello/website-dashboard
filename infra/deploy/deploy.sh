@@ -10,6 +10,9 @@ dc() { docker compose --project-name rate1 --env-file "$ENV_FILE" -f docker-comp
 APP_VERSION="$(git rev-parse --short HEAD)"
 export APP_VERSION
 
+# App credentials from CI (GitHub secrets sent on this deploy's stdin) and generated server-only secrets.
+bash deploy/merge-secrets.sh "$ENV_FILE"
+
 dc config --quiet
 dc pull --quiet --ignore-buildable
 # ingest and app are built here from the checked-out commit; --pull refreshes the node/caddy base images.

@@ -67,14 +67,9 @@ The `awk` line assumes one context in `cli.toml`; with several, copy the token o
 installs everything and runs the first deploy of `bootstrap_ref` (≈ 3–5 min). Watch it with
 `ssh ops@<ip> sudo cloud-init status --wait` and `sudo tail -f /var/log/cloud-init-output.log`.
 
-That first deploy stops at `compose config` because `SMTP_URL` is empty (cloud-init generates `BETTER_AUTH_SECRET`
-and `MAIL_FROM`, but can't know your mail provider). Set it, then deploy:
-
-```bash
-ssh ops@<ip>
-sudo -u deploy -H nano /opt/rate1/.env               # SMTP_URL=smtps://user:pass@smtp.example.eu:465
-sudo -u deploy -H rate1-deploy main
-```
+That first deploy stops at `compose config`: it runs on the server without CI, so `SMTP_URL` isn't there yet. Once
+the CI/CD setup below is done (including the `SMTP_URL` secret), run the Deploy workflow once from the Actions tab;
+it delivers the secrets and brings everything up.
 
 **DNS** (bazed.live is hosted at Websupport.sk, not managed in code): add the records printed by
 `tofu output dns_records` — A and AAAA for `collect`, `app` and the apex. TTL 300 is fine. Caddy gets the certificates
@@ -89,6 +84,8 @@ gh secret set DEPLOY_SSH_KEY < ~/.ssh/rate1_deploy
 gh variable set DEPLOY_HOST --body "$IP"
 gh variable set DEPLOY_KNOWN_HOSTS --body "$(ssh-keyscan -t ed25519 "$IP" 2>/dev/null)"
 gh variable set HCLOUD_FIREWALL --body rate1-fw
+gh secret set SMTP_URL                           # smtps://user:pass@smtp.example.eu:465 (app API emails)
+# optional: gh secret set MAIL_FROM / GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
 ```
 
 Check the host key you scanned against the server's own: `ssh ops@$IP ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`
@@ -113,8 +110,15 @@ is live. The edge Caddy sends `app.<domain>/api/*` to `api` and everything else 
 
 Before `api` starts, the one-shot `api-migrate` applies `api/migrations` as the `postgres` superuser (after ingest
 has migrated: `sites` belongs to `ingest_rw`, and the API adds `sites.org_id`), then exits. The API itself runs as
-`app_rw`. It needs `BETTER_AUTH_SECRET`, `SMTP_URL` and `MAIL_FROM` in `/opt/rate1/.env`; without them every deploy
-stops at `compose config`. In development, mails are printed to the API log; when deployed they go out over SMTP.
+`app_rw`.
+
+**App credentials come from GitHub, not from logging in to the server.** The deploy workflow sends the repository
+secrets `SMTP_URL`, `MAIL_FROM`, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` over its SSH connection, and
+`deploy/merge-secrets.sh` (run by `deploy.sh`) writes them into `/opt/rate1/.env`. An unset secret leaves the server's
+value alone. `BETTER_AUTH_SECRET` is generated on the server the first time and never leaves it; `MAIL_FROM` defaults
+to `Rate 1 <no-reply@<DOMAIN>>`. `SMTP_URL` is required: without it the deploy stops at `compose config` with a message
+saying so. To add or rotate one: set the secret (repo → Settings → Secrets and variables → Actions, or
+`gh secret set SMTP_URL`), then merge or run the Deploy workflow.
 
 1. Change the code, merge to `main`. CI deploys it (build ≈ 2–4 min on the CX23).
 2. Roll back: revert the commit and merge, or deploy an older sha: `sudo -u deploy -H rate1-deploy <sha>`.

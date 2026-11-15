@@ -3,10 +3,13 @@
 # The server's firewall only allows SSH from the admin's IP, so this job:
 #   1. adds the runner's IP to the Hetzner firewall (port 22),
 #   2. runs `ssh deploy@<server> <sha>` - the deploy key is forced to /usr/local/bin/rate1-deploy,
-#      which checks out that commit and runs infra/deploy/deploy.sh,
+#      which checks out that commit and runs infra/deploy/deploy.sh. The app credentials below go over the same
+#      SSH connection (stdin); deploy.sh writes them into /opt/rate1/.env (infra/deploy/merge-secrets.sh),
 #   3. always removes the firewall rule again.
 #
 # Repository secrets:   HCLOUD_TOKEN (Hetzner API token, read/write), DEPLOY_SSH_KEY (private deploy key)
+#   App credentials:    SMTP_URL (required by the app API), MAIL_FROM, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+#                       (optional). An unset one leaves the server's current value alone.
 # Repository variables: DEPLOY_HOST (server IPv4), DEPLOY_KNOWN_HOSTS (ssh-keyscan line for the host),
 #                       HCLOUD_FIREWALL (firewall name, default rate1-fw)
 name: Deploy
@@ -63,15 +66,21 @@ jobs:
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          # App credentials for /opt/rate1/.env (see the header). Unset secrets arrive empty and change nothing.
+          SMTP_URL: ${{ secrets.SMTP_URL }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          (umask 077; for k in SMTP_URL MAIL_FROM GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET; do printf '%s=%s\n' "$k" "${!k}"; done > ~/.ssh/app-env)
           ssh_cmd=(ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 "deploy@${DEPLOY_HOST}")
           # The firewall change takes a few seconds to apply.
           for i in $(seq 1 12); do
             rc=0
-            "${ssh_cmd[@]}" "$GITHUB_SHA" || rc=$?
+            "${ssh_cmd[@]}" "$GITHUB_SHA" < ~/.ssh/app-env || rc=$?
             [ $rc -eq 0 ] && exit 0
             [ $rc -eq 255 ] || exit $rc   # 255 = SSH could not connect; anything else is a deploy failure
             echo "SSH not reachable yet (attempt $i), retrying in 5 s"
