@@ -20,7 +20,7 @@ Emails sent in development (confirmation links, sign-in codes, invitations) appe
 | `src/lib/analysis.ts` | Period totals, page diagnosis, potential, device split, change markers |
 | `src/lib/format.ts`, `metrics.ts` | Number formatting and the six metric definitions |
 | `src/components/` | Layout (top bar, rail), metric cards, trend chart, sortable table, small UI pieces |
-| `src/views/` | Overview, page detail, the site-wide views (search terms, sources, devices, contact options, click paths, changes, requests), and `NoData` (setup screen while there is no data) |
+| `src/views/` | Overview, page detail, the site-wide views (search terms, sources, devices, contact options, click paths, changes, requests), `NoData` (setup screen while there is no data), and `SiteSettings` / `SetupChecklist` (real app API: `/api/sites/:siteId/config`, `/checks`) |
 | `src/styles.css` | Styles copied verbatim from the prototype; `src/auth/auth.css` adds the sign-in and settings styles |
 
 ## Routes
@@ -29,7 +29,7 @@ Signed out: `/login` · `/signup` · `/check-email` · `/forgot-password` · `/r
 
 Signed in: `/` (last opened site, else onboarding) · `/onboarding` (create organisation, add website) · `/connect/wordpress` (the plugin's one-click connect, contract §8) · `/settings/security` (MFA, password) · `/orgs/:orgId/members` (members, invitations)
 
-Per site, under `/s/:siteId`: overview · `pages/:slug` page detail (`home` for `/`) · `search-terms` · `sources` · `devices` · `contact-options` · `click-paths` · `changes` · `requests`
+Per site, under `/s/:siteId`: overview · `pages/:slug` page detail (`home` for `/`) · `search-terms` · `sources` · `devices` · `contact-options` · `click-paths` · `changes` · `requests` · `setup` (setup checklist, contract §12) · `settings`, `settings/tracking`, `settings/requests` (name and allowed addresses; sections, booking pages, page changes without reload; request rules). Members see settings read-only.
 
 The UI only offers sites listed by `/api/me`; the API checks access again on every call.
 

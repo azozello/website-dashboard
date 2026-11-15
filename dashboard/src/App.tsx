@@ -11,6 +11,8 @@ import { sitePath, useSiteId } from './site';
 import { NoData } from './views/NoData';
 import { Overview } from './views/Overview';
 import { PageDetail } from './views/PageDetail';
+import { SetupChecklist } from './views/SetupChecklist';
+import { SiteSettings } from './views/SiteSettings';
 import { Changes, ClickPaths, ContactOptions, Devices, Requests, SearchTerms, Sources } from './views/SiteViews';
 
 function PageRoute() {
@@ -32,27 +34,29 @@ function SiteRoutes() {
     if (allowed) rememberSite(siteId);
   }, [allowed, siteId]);
   if (!allowed) return <Navigate to="/" replace />;
-  // No data API yet: every view shows the setup screen instead of running on empty data.
-  if (!hasData()) {
-    return (
-      <Layout>
-        <NoData />
-      </Layout>
-    );
-  }
   return (
     <Layout>
       <Routes>
-        <Route index element={<Overview />} />
-        <Route path="pages/:slug" element={<PageRoute />} />
-        <Route path="search-terms" element={<SearchTerms />} />
-        <Route path="sources" element={<Sources />} />
-        <Route path="devices" element={<Devices />} />
-        <Route path="contact-options" element={<ContactOptions />} />
-        <Route path="click-paths" element={<ClickPaths />} />
-        <Route path="changes" element={<Changes />} />
-        <Route path="requests" element={<Requests />} />
-        <Route path="*" element={<Navigate to={sitePath(siteId, '/')} replace />} />
+        {/* Configuration, not report data: available before any data arrives. */}
+        <Route path="setup" element={<SetupChecklist />} />
+        <Route path="settings/*" element={<SiteSettings />} />
+        {hasData() ? (
+          <>
+            <Route index element={<Overview />} />
+            <Route path="pages/:slug" element={<PageRoute />} />
+            <Route path="search-terms" element={<SearchTerms />} />
+            <Route path="sources" element={<Sources />} />
+            <Route path="devices" element={<Devices />} />
+            <Route path="contact-options" element={<ContactOptions />} />
+            <Route path="click-paths" element={<ClickPaths />} />
+            <Route path="changes" element={<Changes />} />
+            <Route path="requests" element={<Requests />} />
+            <Route path="*" element={<Navigate to={sitePath(siteId, '/')} replace />} />
+          </>
+        ) : (
+          // No data API yet: every report view shows the setup screen instead of running on empty data.
+          <Route path="*" element={<NoData />} />
+        )}
       </Routes>
     </Layout>
   );

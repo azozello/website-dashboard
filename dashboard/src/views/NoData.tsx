@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../auth/client';
 import { Head, Panel } from '../components/ui';
-import { useSiteId } from '../site';
+import { useSiteId, useSiteNavigate } from '../site';
 
 interface SiteInfo {
   name: string;
@@ -14,6 +14,7 @@ interface SiteInfo {
 /** Shown for every site view until the data API delivers data for this site. */
 export function NoData() {
   const siteId = useSiteId();
+  const navigate = useSiteNavigate();
   const [site, setSite] = useState<SiteInfo | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -63,6 +64,13 @@ export function NoData() {
           </div>
         </Panel>
       )}
+      <p className="muted">
+        The{' '}
+        <button className="lnk" onClick={() => navigate('/setup')}>
+          setup checklist
+        </button>{' '}
+        shows which parts already work.
+      </p>
     </>
   );
 }

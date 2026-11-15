@@ -19,11 +19,16 @@ export const SITE_VIEWS: [string, string][] = [
   ['/requests', 'Requests'],
 ];
 
+/** Setup and settings pages show configuration, not report data: no date range. */
+const isAdminPath = (pathname: string, siteId: string) => /^\/(setup|settings)(\/|$)/.test(pathname.slice(sitePath(siteId, '/').length));
+
 function TopBar() {
   const { range, setRange } = useDashboard();
+  const { pathname } = useLocation();
   const siteId = useSiteId();
   const { me } = useMe();
   const orgId = me.sites.find((s) => s.id === siteId)?.orgId;
+  const admin = isAdminPath(pathname, siteId);
   const ref = useRef<HTMLElement>(null);
   // Publish the bar's real height so the sticky rail sits exactly below it, even when the bar wraps.
   useLayoutEffect(() => {
@@ -40,13 +45,15 @@ function TopBar() {
       <Logo />
       <SiteSwitcher siteId={siteId} />
       <div className="grow" />
-      <div className="seg" role="group" aria-label="Date range">
-        {RANGES.map(([r, label]) => (
-          <button key={r} aria-pressed={r === range} onClick={() => setRange(r)}>
-            {label}
-          </button>
-        ))}
-      </div>
+      {!admin && (
+        <div className="seg" role="group" aria-label="Date range">
+          {RANGES.map(([r, label]) => (
+            <button key={r} aria-pressed={r === range} onClick={() => setRange(r)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       <UserMenu orgId={orgId} />
     </header>
   );
@@ -72,11 +79,16 @@ function Rail() {
     else if (b.bottom > r.bottom) rail.scrollTop += b.bottom - r.bottom + 12;
   }, [pathname]);
 
-  const item = (to: string, label: string, sub?: boolean) => (
-    <button key={to} className={sub ? 'sub' : undefined} aria-current={pathname === sitePath(siteId, to) ? 'page' : undefined} onClick={() => navigate(to)}>
-      {label}
-    </button>
-  );
+  /** `nested`: also current on sub-pages (Settings tabs). */
+  const item = (to: string, label: string, sub?: boolean, nested?: boolean) => {
+    const here = sitePath(siteId, to);
+    const current = pathname === here || (nested && pathname.startsWith(here + '/'));
+    return (
+      <button key={to} className={sub ? 'sub' : undefined} aria-current={current ? 'page' : undefined} onClick={() => navigate(to)}>
+        {label}
+      </button>
+    );
+  };
   return (
     <nav ref={ref} className="rail" aria-label="Sections">
       {item('/', 'Overview')}
@@ -89,6 +101,10 @@ function Rail() {
       <div className="sep" />
       <div className="label">All pages combined</div>
       {SITE_VIEWS.map(([to, label]) => item(to, label))}
+      <div className="sep" />
+      <div className="label">This website</div>
+      {item('/setup', 'Setup checklist')}
+      {item('/settings', 'Settings', false, true)}
     </nav>
   );
 }

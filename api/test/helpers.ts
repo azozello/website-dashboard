@@ -50,8 +50,11 @@ export class Browser {
   patch(url: string, body: unknown) {
     return this.send('PATCH', url, body);
   }
+  put(url: string, body: unknown) {
+    return this.send('PUT', url, body);
+  }
 
-  async send(method: 'GET' | 'POST' | 'PATCH', url: string, body?: unknown): Promise<Res> {
+  async send(method: 'GET' | 'POST' | 'PATCH' | 'PUT', url: string, body?: unknown): Promise<Res> {
     const headers: Record<string, string> = { origin: BASE };
     if (this.jar.size) headers.cookie = [...this.jar].map(([k, v]) => `${k}=${v}`).join('; ');
     if (body !== undefined) headers['content-type'] = 'application/json';

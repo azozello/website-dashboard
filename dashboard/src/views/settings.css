@@ -1,0 +1,111 @@
+/* Website settings and setup checklist. Tokens and .field/.btn/.copy come from styles.css and auth/auth.css.
+   Those load after this file, so a rule here that overrides one of theirs needs a more specific selector. */
+
+/* ---------- settings ---------- */
+.set-page,.setup{display:flex;flex-direction:column;gap:20px;min-width:0}
+.tabs.set-tabs{padding:0;margin-top:-4px}
+.set-fields{margin:0;padding:0;border:0;min-width:0;display:flex;flex-direction:column;gap:20px}
+.set-fields.readonly .icon-btn,.set-fields.readonly .add-btn{display:none}
+.set-card{padding:20px 22px;display:flex;flex-direction:column;gap:14px}
+.set-card h2{margin:0;font-size:17px;font-weight:650;letter-spacing:-.01em}
+.set-card>p{margin:-6px 0 0;font-size:14px;max-width:72ch}
+.set-card code,.rule-hint code{font-size:12.5px;padding:1px 5px;border-radius:5px;background:var(--line-soft)}
+.set-empty{margin:0;font-size:14px;color:var(--muted)}
+.narrow-field{max-width:420px}
+
+.field input:disabled,.field select:disabled{background:var(--bg);color:var(--muted)}
+.field input[aria-invalid="true"]{border-color:var(--warn);background:var(--warn-soft)}
+.field small.field-err,small.field-err{color:var(--warn);font-weight:500;font-size:13px}
+
+.set-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+.set-row{display:flex;align-items:flex-start;gap:8px;max-width:600px}
+.set-row>.field{flex:1 1 auto;min-width:0}
+.set-row.detected{align-items:center;justify-content:space-between;max-width:none;padding:10px 0;border-top:1px solid var(--line-soft)}
+.set-row.detected:first-child{border-top:0;padding-top:0}
+.set-row.detected span{display:flex;flex-direction:column}
+
+.icon-btn{flex:0 0 auto;width:44px;height:44px;display:grid;place-items:center;border:0;border-radius:10px;background:transparent;color:var(--muted);cursor:pointer}
+.icon-btn:hover{background:var(--line-soft);color:var(--warn)}
+
+/* sections: a grid with column headers on wide screens */
+.set-grid{display:flex;flex-direction:column;gap:8px}
+.set-grid-h,.set-grid-r{display:grid;grid-template-columns:minmax(120px,.8fr) minmax(160px,1.2fr) minmax(140px,1fr) 44px;gap:8px;align-items:start}
+.set-grid-h span{font-size:13px;font-weight:600;color:var(--muted)}
+.set-grid-r .field>span:first-child{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+.set-facts{display:grid;grid-template-columns:max-content 1fr;gap:6px 18px;margin:0;font-size:14px}
+.set-facts dt{color:var(--muted)}
+.set-facts dd{margin:0;min-width:0;overflow-wrap:anywhere}
+
+.set-radios{display:flex;flex-wrap:wrap;gap:10px}
+.set-radio{flex:1 1 240px;display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;cursor:pointer}
+.set-radio:has(input:checked){border-color:var(--r1);background:var(--r1-soft)}
+.set-radio input{width:18px;height:18px;margin:2px 0 0;accent-color:var(--r1)}
+.set-radio span{display:flex;flex-direction:column;font-size:14px}
+
+/* request rules */
+.rules{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:12px}
+.rule{padding:14px 16px;border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;gap:10px}
+.rule.invalid{border-color:var(--warn)}
+.rule-top{display:grid;grid-template-columns:minmax(140px,1fr) minmax(180px,1.2fr) auto 44px;gap:10px;align-items:end}
+.rule-top>.icon-btn{align-self:end}
+.rule-top .seg{display:flex}
+.rule-top .seg button{flex:1 1 0;min-height:38px;white-space:nowrap}
+.rule-match{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.rule-match:empty{display:none}
+.rule-hint{margin:0;font-size:13px}
+
+/* save bar */
+.savebar{position:sticky;bottom:12px;z-index:4;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;padding:10px 12px 10px 16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);box-shadow:0 8px 24px rgba(28,40,38,.12)}
+.savebar.dirty{border-color:var(--r1)}
+.savebar>p{margin:0;font-size:14px;font-weight:500}
+.savebar>p.ok,.savebar>p.err{padding:6px 10px}
+
+/* ---------- setup checklist ---------- */
+.setup-summary{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 24px;padding:16px 22px}
+.setup-progress{flex:1 1 320px;font-size:15px}
+.setup-progress .ctrack{height:8px;margin-top:10px;border-radius:4px}
+.setup-progress .ctrack div{height:8px;border-radius:4px;background:var(--r2);transition:width .3s}
+.setup-again{display:flex;align-items:center;gap:12px}
+
+.checks{margin:0;padding:4px 0;list-style:none}
+/* auth.css has an unrelated .check (checkbox label, flex, centred): hence .checks>.check */
+.checks>.check{display:grid;grid-template-columns:26px minmax(0,1fr);align-items:start;gap:12px;padding:16px 22px;border-top:1px solid var(--line-soft);font-size:inherit}
+.checks>.check:first-child{border-top:0}
+.check-icon{width:26px;height:26px;border-radius:50%;display:grid;place-items:center}
+.check-icon.pass{background:var(--r2-soft);color:var(--r2)}
+.check-icon.fail{background:var(--warn-soft);color:var(--warn)}
+.check-icon.pending{background:var(--line-soft);color:var(--faint)}
+.check-body{min-width:0}
+.check-body>b{display:block;font-size:15px;font-weight:600;line-height:26px}
+.check-body>p{margin:2px 0 0;font-size:14px;color:var(--muted);max-width:76ch}
+.check.fail .check-body>p{color:var(--ink)}
+.check-fix{margin-top:10px;display:flex;flex-direction:column;gap:8px;font-size:14px}
+.check-fix p{margin:0;max-width:76ch}
+.check-fix .copy{max-width:720px}
+.live{align-items:center}
+.live-wait{display:inline-flex;align-items:center;gap:8px;font-size:14px}
+.spinner{width:14px;height:14px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--r1);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spinner{animation-duration:2.4s}}
+
+@media (max-width:820px){
+  .set-card{padding:16px}
+  .set-grid-h{display:none}
+  .set-grid-r{grid-template-columns:minmax(0,1fr) 44px;padding:12px 0;border-top:1px solid var(--line-soft)}
+  .set-grid-r:first-of-type{border-top:0}
+  .set-grid-r>.field{grid-column:1}
+  .set-grid-r>.icon-btn{grid-column:2;grid-row:1}
+  .set-grid-r .field>span:first-child{position:static;width:auto;height:auto;overflow:visible;clip:auto}
+  .rule{padding:12px}
+  .rule-top{grid-template-columns:minmax(0,1fr) 44px}
+  .rule-top>.field{grid-column:1}
+  .rule-top>.field~.field{grid-column:1/-1}
+  .rule-top>.icon-btn{grid-column:2;grid-row:1}
+  .rule-match{grid-template-columns:minmax(0,1fr)}
+  .checks>.check{padding:14px 16px}
+  .setup-summary{padding:14px 16px}
+  .savebar{bottom:8px}
+  .savebar .row{width:100%}
+  .savebar .row .btn{flex:1 1 0}
+}
