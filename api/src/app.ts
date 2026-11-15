@@ -3,7 +3,9 @@ import { createAuth, type Auth } from './auth.ts';
 import type { Settings } from './config.ts';
 import { createPool, type Db } from './db.ts';
 import { createMailer, type Mailer } from './mail.ts';
+import { registerChecks } from './checks.ts';
 import { registerRoutes } from './routes.ts';
+import { registerSiteConfig } from './site-config.ts';
 import { createGuards } from './tenant.ts';
 
 export interface App {
@@ -58,7 +60,10 @@ export async function buildApp(settings: Settings, opts: { logger?: boolean } = 
   });
 
   app.get('/healthz', async () => ({ ok: true, version: settings.version }));
-  registerRoutes(app, db, createGuards(auth, db), settings);
+  const guards = createGuards(auth, db);
+  registerRoutes(app, db, guards, settings);
+  registerSiteConfig(app, db, guards);
+  registerChecks(app, db, guards, settings);
 
   return { app, auth, db, mailer };
 }

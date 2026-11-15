@@ -9,6 +9,8 @@ import { BY_SLUG } from './mock/data';
 import { sitePath, useSiteId } from './site';
 import { Overview } from './views/Overview';
 import { PageDetail } from './views/PageDetail';
+import { SetupChecklist } from './views/SetupChecklist';
+import { SiteSettings } from './views/SiteSettings';
 import { Changes, ClickPaths, ContactOptions, Devices, Requests, SearchTerms, Sources } from './views/SiteViews';
 
 function PageRoute() {
@@ -42,6 +44,8 @@ function SiteRoutes() {
         <Route path="click-paths" element={<ClickPaths />} />
         <Route path="changes" element={<Changes />} />
         <Route path="requests" element={<Requests />} />
+        <Route path="setup" element={<SetupChecklist />} />
+        <Route path="settings/*" element={<SiteSettings />} />
         <Route path="*" element={<Navigate to={sitePath(siteId, '/')} replace />} />
       </Routes>
     </Layout>

@@ -49,7 +49,14 @@ The session's active organisation never grants access. A site with `org_id = NUL
 | POST | `/api/orgs/:orgId/sites` | admin | add a site; returns the site secret (and Wix webhook URL) once |
 | GET | `/api/sites/:siteId` | member | site details (never secrets) |
 | PATCH | `/api/sites/:siteId` | admin | rename, change allowed origins |
+| GET | `/api/sites/:siteId/config` | member | tracking config (`site_config`, §5) in editor shape, plus the forms the WordPress plugin reported |
+| PUT | `/api/sites/:siteId/config` | admin | replace sections, booking paths, `spa`, request rules; bumps `config_version`, 409 if based on an older version, 400 `{field, message}` when invalid |
+| GET | `/api/sites/:siteId/checks` | member | setup checklist (§12), computed from the tracking tables and stored in `site_checks` |
 | GET | `/healthz` | public | `{ ok, version }` |
+
+**Request rules** (`src/site-config.ts`): the editor works on one list; on save, rules become `request_rules` entries (`{method, form, source?, form_id?, path?, counts}`, contract README edit #6) and browser rules with selectors also become `forms_browser` entries. Each form must have exactly one rule with `counts: true` (§5). Typed paths (booking, thank-you, section pages) are normalised with the §1 rule before storing.
+
+**Setup checklist** (`src/checks.ts`): `pass` / `fail` / `pending`. Pending means the source doesn't exist yet: `pages_tagged` and `csp_ok` need the page scanner, `gsc_connected` needs `gsc_connections`, `buttons_found` passes on a contact click but can't fail without the scanner. Each source table is looked up with `to_regclass`, so the checklist also works on a database without ingest's tables.
 
 New dashboard data endpoints go under `/api/sites/:siteId/…` with `preHandler: requireSite('member')` and filter every query by `request.tenant.siteId`.
 
@@ -60,6 +67,7 @@ New dashboard data endpoints go under `/api/sites/:siteId/…` with `preHandler:
 - `001_sites.sql`: `sites`, `site_config` exactly as in `ingest/migrations/001_init.sql`, `IF NOT EXISTS` (for an empty dev database).
 - `002_auth.sql`: Better Auth schema, generated from `src/auth.ts`. Regenerate into a new migration when upgrading Better Auth or changing plugins.
 - `003_tenancy.sql`: `sites.org_id` (nullable, `ON DELETE SET NULL`), unique membership per (org, user), grants.
+- `006_site_checks.sql`: `site_checks` (§10, one row per site and check id). Row-level security policies when the RLS migration has already run.
 
 ## Environment
 
