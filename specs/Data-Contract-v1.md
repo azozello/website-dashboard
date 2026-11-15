@@ -57,12 +57,12 @@ This contract is the only thing the four workstreams share. Anything not written
 | TLS | HTTPS only, automatic certificates; HSTS on `app` |
 | Reverse proxy | In front of both hosts. Passes the client IP in `X-Forwarded-For` (or `CF-Connecting-IP` if Cloudflare is added in front). Ingest trusts that header only from `TRUSTED_PROXY_CIDRS`. |
 | Limits at proxy | `/v1/e`: body ≤ 16 KB, 120 requests/min per IP. `/v1/r`, `/v1/w`, `/v1/plugin/*`: 60 requests/min per IP |
-| Database | Postgres 16, database `rate1`. Roles: `ingest_rw` (writes tracking tables, reads `sites` and `site_config`), `app_rw` (writes site, admin and Search Console tables, reads everything) |
+| Database | Postgres 16, database `rate1`. Roles: `ingest_rw` (writes tracking tables, reads `sites` and `site_config`), `app_rw` (writes site, admin, auth and Search Console tables, reads everything). `ingest_rw` has no access to the auth tables. |
 | r1.js | Served from `collect` at `/v1/r1.js` (Cache-Control 1 h); versioned copies at `/v1/r1.<version>.js` |
 | Health | `GET /healthz` on both hosts → `200 {"ok": true, "version": "…"}` |
 | Logs | Proxy access logs off for `/v1/*`, or IP-masked. No request bodies from `/v1/*` in application logs. |
 | Backups | Daily Postgres dump, 7-day retention |
-| Environment variables | `ENV` (test or prod), `DATABASE_URL`, `COLLECT_BASE_URL`, `APP_BASE_URL`, `TRUSTED_PROXY_CIDRS`, `CLIENT_IP_HEADER`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY` |
+| Environment variables | `ENV` (test or prod), `DATABASE_URL`, `COLLECT_BASE_URL`, `APP_BASE_URL`, `TRUSTED_PROXY_CIDRS`, `CLIENT_IP_HEADER`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`; app API only: `BETTER_AUTH_SECRET`, `SMTP_URL`, `MAIL_FROM` |
 | Test-only endpoint | `GET /v1/_echo` on `collect` when `ENV=test` → `{"ip_seen", "ua_seen", "origin"}`, to prove the proxy passes the real client IP |
 
 ---
@@ -286,7 +286,8 @@ The dashboard reads these tables directly in the PoC. Ingest reads only `sites` 
 
 | Table | Written by | Read by | Main columns |
 | --- | --- | --- | --- |
-| `sites` | Dashboard | Ingest, dashboard | id, name, platform (php, wordpress, wix), timezone, allowed_origins[], site_key, site_secret_hash, webhook_token_hash, created_at |
+| `sites` | Dashboard | Ingest, dashboard | id, name, platform (php, wordpress, wix), timezone, allowed_origins[], site_key, site_secret_hash, webhook_token_hash, created_at, org_id (nullable; the owning organisation, null = visible to nobody in the dashboard) |
+| `user`, `session`, `account`, `verification`, `twoFactor`, `organization`, `member`, `invitation`, `rateLimit` | Dashboard | Dashboard | Sign-in and tenancy (Better Auth schema, `api/migrations/002_auth.sql`). Tenant = `organization`; `member` (organizationId, userId, role: owner, admin, member) |
 | `site_config` | Dashboard | Ingest | site_id, config_version, sections, booking_paths, forms_browser, request_rules, updated_at |
 | `site_pages` | Dashboard (scanner) | Dashboard | site_id, path, title, in_sitemap, has_script, contact_links, suggested_sections, scanned_at |
 | `salts` | Ingest | Ingest | day, salt |
@@ -366,3 +367,4 @@ The dashboard reads these tables directly in the PoC. Ingest reads only `sites` 
 ## Changelog
 
 - **1.0** (15 Nov 2026): first proposal.
+- **1.1** (15 Nov 2026, proposed): dashboard sign-in and tenancy. §2: `app_rw` owns the auth tables, new app API variables. §10: `sites.org_id`, auth tables. Ingest unaffected (`org_id` is nullable).

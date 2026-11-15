@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useSiteNavigate } from '../site';
 import type { Page, Tone } from '../mock/data';
 import { change, cssVars, TONE } from '../lib/format';
 import type { Flag } from '../lib/analysis';
@@ -55,7 +55,7 @@ export function Dx({ tone, children }: { tone: Tone; children: ReactNode }) {
 }
 
 export function PageLink({ page }: { page: Page }) {
-  const navigate = useNavigate();
+  const navigate = useSiteNavigate();
   return (
     <button className="lnk" onClick={() => navigate(pagePath(page))}>
       {page.name}

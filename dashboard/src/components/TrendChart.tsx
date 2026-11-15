@@ -56,6 +56,7 @@ export function TrendChart({ cur, show, flags }: Props) {
       className={'chart' + (hover ? ' active' : '')}
       onMouseMove={onMove}
       onTouchStart={onMove}
+      onTouchMove={onMove}
       onMouseLeave={() => setHover(null)}
     >
       <svg viewBox="0 0 1000 250" preserveAspectRatio="none" role="img" aria-label={'Weekly trend: ' + active.map((m) => m.label).join(', ')}>
@@ -88,7 +89,7 @@ export function TrendChart({ cur, show, flags }: Props) {
         </div>
       ))}
       {ticks.map((j) => (
-        <span key={j} className="xl" style={{ left: (X(j) / 10).toFixed(2) + '%' }}>
+        <span key={j} className={'xl' + (X(j) === 0 ? ' first' : X(j) === 1000 ? ' last' : '')} style={{ left: (X(j) / 10).toFixed(2) + '%' }}>
           {cur[j].label}
         </span>
       ))}

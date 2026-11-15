@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useSiteNavigate } from '../site';
 import { DataTable } from '../components/DataTable';
 import { MetricCards } from '../components/MetricCards';
 import { TrendChart } from '../components/TrendChart';
@@ -20,7 +20,7 @@ const TIME_BUCKETS = ['Under 10 seconds', '10–30 seconds', '30–60 seconds', 
 
 export function PageDetail({ page: p }: { page: Page }) {
   const { range, pshow, togglePshow } = useDashboard();
-  const navigate = useNavigate();
+  const navigate = useSiteNavigate();
   const S = useMemo(() => periods(SITE, range), [range]);
   const s = useMemo(() => pageStats(p, S.T, range), [p, S, range]);
   const T = s.T;

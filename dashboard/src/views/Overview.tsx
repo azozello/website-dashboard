@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useSiteNavigate } from '../site';
 import { DataTable } from '../components/DataTable';
 import { MetricCards } from '../components/MetricCards';
 import { TrendChart } from '../components/TrendChart';
@@ -24,7 +24,7 @@ interface Row {
 
 export function Overview() {
   const { range, show, toggleShow } = useDashboard();
-  const navigate = useNavigate();
+  const navigate = useSiteNavigate();
   const { S, stats } = useMemo(() => allStats(range), [range]);
   const flags = flagsFor(range);
 
