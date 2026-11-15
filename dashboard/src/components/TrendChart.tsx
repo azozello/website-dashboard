@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState, type MouseEvent, type TouchEvent } f
 import type { Flag } from '../lib/analysis';
 import { cssVars } from '../lib/format';
 import { METRICS } from '../lib/metrics';
-import type { Week } from '../mock/data';
+import type { Week } from '../data/model';
 import type { ShowState } from '../state';
 
 interface Props {

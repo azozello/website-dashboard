@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { DataTable, type Column } from '../components/DataTable';
 import { Dx, PageLink } from '../components/ui';
-import { BY_ID, type Change, type Inquiry, type Page } from '../mock/data';
+import { BY_ID, type Change, type Inquiry, type Page } from '../data/model';
 
 type ChangeRow = Change & { where: string };
 

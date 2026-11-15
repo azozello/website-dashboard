@@ -8,7 +8,7 @@
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Site key and secret, pasted by hand for the PoC; status of the connection.
+ * Connect button (Rate1_Connector_Connect), or site key and secret pasted by hand; status of the connection.
  */
 class Rate1_Connector_Admin {
 
@@ -114,8 +114,9 @@ class Rate1_Connector_Admin {
 			return;
 		}
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Display-only flags set by our own redirect after a nonce-checked save.
-		$saved  = isset( $_GET['rate1_saved'] );
-		$errors = isset( $_GET['rate1_errors'] ) ? explode( ',', sanitize_text_field( wp_unslash( $_GET['rate1_errors'] ) ) ) : array();
+		$saved   = isset( $_GET['rate1_saved'] );
+		$errors  = isset( $_GET['rate1_errors'] ) ? explode( ',', sanitize_text_field( wp_unslash( $_GET['rate1_errors'] ) ) ) : array();
+		$connect = isset( $_GET['rate1_connect'] ) ? sanitize_key( wp_unslash( $_GET['rate1_connect'] ) ) : '';
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 
 		$key        = (string) get_option( Rate1_Connector_Options::SITE_KEY, '' );
@@ -139,11 +140,25 @@ class Rate1_Connector_Admin {
 				<div class="notice notice-error"><p><?php esc_html_e( 'The site secret was not saved: it must look like sk_ followed by 40 letters and digits.', 'rate1-connector' ); ?></p></div>
 			<?php endif; ?>
 
+			<?php self::render_connect_notice( $connect ); ?>
+
 			<h2><?php esc_html_e( 'Connect', 'rate1-connector' ); ?></h2>
-			<p>
-				<button type="button" class="button button-primary" disabled="disabled"><?php esc_html_e( 'Connect to Rate 1', 'rate1-connector' ); ?></button>
-				<span class="description"><?php esc_html_e( 'One-click connect is coming soon. For now, copy the site key and site secret from the Rate 1 dashboard into the fields below.', 'rate1-connector' ); ?></span>
-			</p>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="<?php echo esc_attr( Rate1_Connector_Connect::START ); ?>" />
+				<?php wp_nonce_field( Rate1_Connector_Connect::START, Rate1_Connector_Connect::NONCE_FIELD, true ); ?>
+				<p>
+					<button type="submit" class="button button-primary">
+						<?php echo $has_secret ? esc_html__( 'Reconnect to Rate 1', 'rate1-connector' ) : esc_html__( 'Connect to Rate 1', 'rate1-connector' ); ?>
+					</button>
+					<span class="description">
+						<?php
+						/* translators: %s: Rate 1 dashboard host */
+						echo esc_html( sprintf( __( 'Opens the Rate 1 dashboard (%s) to choose the website. Rate 1 then sends the site key and secret back here.', 'rate1-connector' ), (string) wp_parse_url( Rate1_Connector_Connect::app_url(), PHP_URL_HOST ) ) );
+						?>
+					</span>
+				</p>
+			</form>
+			<p class="description"><?php esc_html_e( 'Or copy the site key and site secret from the Rate 1 dashboard into the fields below.', 'rate1-connector' ); ?></p>
 
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<input type="hidden" name="action" value="<?php echo esc_attr( self::ACTION ); ?>" />
@@ -219,6 +234,29 @@ class Rate1_Connector_Admin {
 			</table>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Notice for the outcome of "Connect to Rate 1" (see Rate1_Connector_Connect::complete()).
+	 *
+	 * @param string $result ok, cancelled, expired, failed, bad_response or ''.
+	 */
+	private static function render_connect_notice( $result ) {
+		$notices = array(
+			'ok'           => array( 'success', __( 'Connected to Rate 1. The site key and secret are saved.', 'rate1-connector' ) ),
+			'cancelled'    => array( 'warning', __( 'Connecting was cancelled in the Rate 1 dashboard. Nothing was changed.', 'rate1-connector' ) ),
+			'expired'      => array( 'error', __( 'The connection attempt expired or was not started from this page. Click Connect to Rate 1 again.', 'rate1-connector' ) ),
+			'failed'       => array( 'error', __( 'Rate 1 did not accept the connection (the link is valid for 5 minutes and works once). Click Connect to Rate 1 again.', 'rate1-connector' ) ),
+			'bad_response' => array( 'error', __( 'Rate 1 sent an unexpected answer. Nothing was changed; try again later.', 'rate1-connector' ) ),
+		);
+		if ( ! isset( $notices[ $result ] ) ) {
+			return;
+		}
+		printf(
+			'<div class="notice notice-%1$s is-dismissible"><p>%2$s</p></div>',
+			esc_attr( $notices[ $result ][0] ),
+			esc_html( $notices[ $result ][1] )
+		);
 	}
 
 	/**
