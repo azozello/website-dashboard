@@ -1,8 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { App } from '../src/app.ts';
-import { Browser, PASSWORD, firstUrl, freshApp, lastMail, signUpVerified, totp } from './helpers.ts';
+import { Browser, PASSWORD, firstUrl, freshApp, lastMail, signUpVerified, totp, type TestApp } from './helpers.ts';
 
-let t: App;
+let t: TestApp;
 beforeAll(async () => {
   t = await freshApp('auth');
 });

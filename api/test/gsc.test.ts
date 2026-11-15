@@ -1,13 +1,13 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { App } from '../src/app.ts';
 import { computeChecks } from '../src/checks.ts';
 import { GSC_SCOPE, GoogleError, type AnalyticsRequest, type AnalyticsRow, type GoogleApi, type GscProperty, type Tokens } from '../src/google.ts';
+import { actor } from '../src/db.ts';
 import { aggregate, BACKFILL_DAYS, matchingProperties, pickProperty, REREAD_DAYS } from '../src/gsc.ts';
 import { seal, unseal } from '../src/seal.ts';
 import { computeStats } from '../src/stats.ts';
-import { Browser, freshApp, signUpVerified } from './helpers.ts';
+import { Browser, freshApp, signUpVerified, type TestApp } from './helpers.ts';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
@@ -126,7 +126,7 @@ describe('search console helpers', () => {
 /* ---------------------------------------------------------------- without Google */
 
 describe('search console not configured', () => {
-  let t: App;
+  let t: TestApp;
   let owner: Browser;
   let siteId = '';
   beforeAll(async () => {
@@ -151,13 +151,17 @@ describe('search console not configured', () => {
 /* ---------------------------------------------------------------- with a fake Google */
 
 describe('search console', () => {
-  let t: App;
+  let t: TestApp;
   let google: FakeGoogle;
   let owner: Browser;
   let member: Browser;
   let outsider: Browser;
   let orgId = '';
   let siteId = '';
+  let ownerId = '';
+  let memberId = '';
+  /** Outside a request, the app's pool acts for nobody (row-level security); imports run for a user. */
+  const asOwner = <T>(fn: () => Promise<T>) => actor.run({ userId: ownerId }, fn);
 
   beforeAll(async () => {
     google = new FakeGoogle();
@@ -167,8 +171,9 @@ describe('search console', () => {
     outsider = await signUpVerified(t, 'outsider@other.example');
     orgId = (await owner.post('/api/auth/organization/create', { name: 'gsc', slug: 'gsc' })).json.id;
     siteId = (await owner.post(`/api/orgs/${orgId}/sites`, { name: 'Praxis', platform: 'wordpress', origins: ['https://praxis.example'] })).json.site.id;
-    const memberId = (await t.db.query<{ id: string }>(`SELECT id FROM "user" WHERE email = 'member@gsc.example'`)).rows[0].id;
-    await t.db.query(`INSERT INTO member (id, "organizationId", "userId", role, "createdAt") VALUES ('m-gsc', $1, $2, 'member', now())`, [orgId, memberId]);
+    memberId = (await t.sql.query<{ id: string }>(`SELECT id FROM "user" WHERE email = 'member@gsc.example'`)).rows[0].id;
+    ownerId = (await t.sql.query<{ id: string }>(`SELECT id FROM "user" WHERE email = 'owner@gsc.example'`)).rows[0].id;
+    await t.sql.query(`INSERT INTO member (id, "organizationId", "userId", role, "createdAt") VALUES ('m-gsc', $1, $2, 'member', now())`, [orgId, memberId]);
   });
   afterAll(async () => {
     await t.app.close();
@@ -185,14 +190,14 @@ describe('search console', () => {
 
   const callback = (b: Browser, params: Record<string, string>) => b.get(`/api/gsc/callback?${new URLSearchParams(params)}`);
   const location = (r: { headers: Record<string, unknown> }) => String(r.headers.location);
-  const conn = async (site = siteId) => (await t.db.query('SELECT * FROM gsc_connections WHERE site_id = $1', [site])).rows[0];
+  const conn = async (site = siteId) => (await t.sql.query('SELECT * FROM gsc_connections WHERE site_id = $1', [site])).rows[0];
 
   it('lets only admins start, and only members look', async () => {
     expect((await member.post(`/api/sites/${siteId}/gsc/connect`)).status).toBe(403);
     expect((await outsider.post(`/api/sites/${siteId}/gsc/connect`)).status).toBe(404);
     expect((await outsider.get(`/api/sites/${siteId}/gsc`)).status).toBe(404);
     expect((await member.get(`/api/sites/${siteId}/gsc`)).json).toMatchObject({ available: true, connection: null });
-    const checks = await computeChecks(t.db, siteId, 'wordpress', { gsc: true });
+    const checks = await computeChecks(t.sql, siteId, 'wordpress', { gsc: true });
     expect(checks.find((c) => c.id === 'gsc_connected')).toMatchObject({ status: 'fail', reason: 'not_connected' });
   });
 
@@ -201,7 +206,7 @@ describe('search console', () => {
 
     const state = await start(owner);
     // Stored hashed only.
-    expect((await t.db.query('SELECT 1 FROM gsc_oauth_states WHERE state_hash = $1', [state])).rowCount).toBe(0);
+    expect((await t.sql.query('SELECT 1 FROM gsc_oauth_states WHERE state_hash = $1', [state])).rowCount).toBe(0);
     expect(location(await callback(member, { state, code: 'good-code' }))).toBe('/?gsc=error&reason=invalid_state');
     expect((await callback(new Browser(t), { state, code: 'good-code' })).status).toBe(401);
 
@@ -210,7 +215,7 @@ describe('search console', () => {
     expect(location(await callback(owner, { state: denied, code: 'good-code' }))).toBe('/?gsc=error&reason=invalid_state'); // used
 
     const expired = await start(owner);
-    await t.db.query(`UPDATE gsc_oauth_states SET expires_at = now() - interval '1 second' WHERE used_at IS NULL`);
+    await t.sql.query(`UPDATE gsc_oauth_states SET expires_at = now() - interval '1 second' WHERE used_at IS NULL`);
     expect(location(await callback(owner, { state: expired, code: 'good-code' }))).toBe(`/s/${siteId}/settings/search-console?gsc=error&reason=expired`);
     expect(await conn()).toBeUndefined();
   });
@@ -242,7 +247,7 @@ describe('search console', () => {
     expect(first.at(-1)!.endDate).toBe(today());
     expect(new Set(first.map((x) => x.dimensions.join(',')))).toEqual(new Set(['date,page', 'date,page,query']));
 
-    const rows = (await t.db.query(`SELECT to_char(date, 'YYYY-MM-DD') AS date, path, query, clicks, impressions, position FROM gsc_daily WHERE site_id = $1 ORDER BY date, path, query NULLS FIRST`, [siteId])).rows;
+    const rows = (await t.sql.query(`SELECT to_char(date, 'YYYY-MM-DD') AS date, path, query, clicks, impressions, position FROM gsc_daily WHERE site_id = $1 ORDER BY date, path, query NULLS FIRST`, [siteId])).rows;
     expect(rows).toEqual([
       { date: D1, path: '/ruecken', query: null, clicks: 6, impressions: 200, position: 6 },
       { date: D1, path: '/ruecken', query: 'rückenschmerzen', clicks: 5, impressions: 80, position: 4.5 },
@@ -256,32 +261,34 @@ describe('search console', () => {
     expect(s.connection.accountProperties).toBeUndefined(); // members don't see the account's other properties
     expect((await owner.get(`/api/sites/${siteId}/gsc`)).json.connection.accountProperties).toEqual(['sc-domain:praxis.example', 'https://other.example/']);
 
-    const checks = await computeChecks(t.db, siteId, 'wordpress', { gsc: true });
+    const checks = await computeChecks(t.sql, siteId, 'wordpress', { gsc: true });
     expect(checks.find((x) => x.id === 'gsc_connected')).toMatchObject({ status: 'pass', reason: 'connected', detail: { property: 'sc-domain:praxis.example' } });
   });
 
   it('re-reads only the last days on the next sync', async () => {
     google.calls = [];
-    expect(await t.gsc.syncSite(siteId)).toMatchObject({ status: 'synced', rows: 5, through: D2 });
+    expect(await asOwner(() => t.gsc.syncSite(siteId))).toMatchObject({ status: 'synced', rows: 5, through: D2 });
     expect(Math.min(...google.calls.map((x) => Date.parse(x.startDate)))).toBe(Date.parse(daysAgo(5 + REREAD_DAYS)));
-    expect((await t.db.query('SELECT count(*)::int AS n FROM gsc_daily WHERE site_id = $1', [siteId])).rows[0].n).toBe(5);
-    // Not due again within the day.
+    expect((await t.sql.query('SELECT count(*)::int AS n FROM gsc_daily WHERE site_id = $1', [siteId])).rows[0].n).toBe(5);
+    // Not due again within the day; once due, the daily run imports it acting for the admin who connected it.
     expect(await t.gsc.syncDue()).toEqual([]);
+    await t.sql.query(`UPDATE gsc_connections SET last_sync_at = now() - interval '21 hours' WHERE site_id = $1`, [siteId]);
+    expect(await t.gsc.syncDue()).toEqual([{ siteId, status: 'synced', rows: 5, through: D2 }]);
   });
 
   it('reports search terms per site and page', async () => {
-    await t.db.query(fs.readFileSync(new URL('../../ingest/migrations/001_init.sql', import.meta.url), 'utf8'));
-    const v = (await t.db.query<{ id: string }>(
+    await t.sql.query(fs.readFileSync(new URL('../../ingest/migrations/001_init.sql', import.meta.url), 'utf8'));
+    const v = (await t.sql.query<{ id: string }>(
       `INSERT INTO visits (site_id, visitor_key, started_at, last_seen_at, landing_path, source_channel, device, test)
        VALUES ($1, 'k', now() - interval '1 day', now() - interval '1 day', '/ruecken', 'google_organic', 'mobile', false) RETURNING id`,
       [siteId],
     )).rows[0].id;
-    await t.db.query(
+    await t.sql.query(
       `INSERT INTO pageviews (pv, site_id, visit_id, seq, path, title, nav, received_at, has_engage) VALUES ('pv1', $1, $2, 1, '/ruecken', 'Rücken', 'load', now() - interval '1 day', false)`,
       [siteId, v],
     );
 
-    const s = await computeStats(t.db, siteId, { weeks: 4, gsc: true });
+    const s = await computeStats(t.sql, siteId, { weeks: 4, gsc: true });
     expect(s.search).toMatchObject({ status: 'active', property: 'sc-domain:praxis.example', through: D2, clicks: 9, impressions: 250 });
     expect(s.search.terms).toEqual([
       { query: 'rückenschmerzen', clicks: 5, impressions: 80, position: 4.5, path: '/ruecken' },
@@ -315,7 +322,7 @@ describe('search console', () => {
       status: 'needs_property',
       candidates: ['https://two.example/', 'https://www.two.example/'],
     });
-    const checks = await computeChecks(t.db, site2, 'php', { gsc: true });
+    const checks = await computeChecks(t.sql, site2, 'php', { gsc: true });
     expect(checks.find((x) => x.id === 'gsc_connected')).toMatchObject({ status: 'fail', reason: 'no_property' });
 
     expect((await owner.put(`/api/sites/${site2}/gsc/property`, { property: 'https://other.example/' })).status).toBe(400);
@@ -329,35 +336,41 @@ describe('search console', () => {
 
   it('marks the connection broken when Google refuses the token', async () => {
     google.refreshError = 'invalid_grant';
-    await t.db.query(`UPDATE gsc_connections SET last_sync_at = NULL WHERE site_id = $1`, [siteId]);
-    expect(await t.gsc.syncSite(siteId)).toMatchObject({ status: 'failed', error: 'token_revoked' });
+    await t.sql.query(`UPDATE gsc_connections SET last_sync_at = NULL WHERE site_id = $1`, [siteId]);
+    expect(await asOwner(() => t.gsc.syncSite(siteId))).toMatchObject({ status: 'failed', error: 'token_revoked' });
     expect(await conn()).toMatchObject({ status: 'error', last_error: 'token_revoked' });
-    const checks = await computeChecks(t.db, siteId, 'wordpress', { gsc: true });
+    const checks = await computeChecks(t.sql, siteId, 'wordpress', { gsc: true });
     expect(checks.find((x) => x.id === 'gsc_connected')).toMatchObject({ status: 'fail', reason: 'connection_inactive', detail: { error: 'token_revoked' } });
     expect((await owner.post(`/api/sites/${siteId}/gsc/sync`)).status).toBe(409);
     // The data stays until someone reconnects or disconnects.
-    expect((await t.db.query('SELECT count(*)::int AS n FROM gsc_daily WHERE site_id = $1', [siteId])).rows[0].n).toBe(5);
+    expect((await t.sql.query('SELECT count(*)::int AS n FROM gsc_daily WHERE site_id = $1', [siteId])).rows[0].n).toBe(5);
     google.refreshError = null;
   });
 
   it('keeps going through a Google outage', async () => {
     google.refreshError = 'unavailable';
-    await t.db.query(`UPDATE gsc_connections SET status = 'active', last_error = NULL WHERE site_id = $1`, [siteId]);
-    expect(await t.gsc.syncSite(siteId)).toMatchObject({ status: 'failed', error: 'google_unavailable' });
+    await t.sql.query(`UPDATE gsc_connections SET status = 'active', last_error = NULL WHERE site_id = $1`, [siteId]);
+    expect(await asOwner(() => t.gsc.syncSite(siteId))).toMatchObject({ status: 'failed', error: 'google_unavailable' });
     expect(await conn()).toMatchObject({ status: 'active', last_error: 'google_unavailable', sync_started_at: null });
     google.refreshError = null;
   });
 
+  it('stops the daily import when the admin who connected is no longer one', async () => {
+    await t.sql.query(`UPDATE gsc_connections SET status = 'active', last_error = NULL, last_sync_at = NULL, connected_by = $2 WHERE site_id = $1`, [siteId, memberId]);
+    expect((await t.gsc.syncDue()).map((r) => r.siteId)).not.toContain(siteId);
+    expect(await conn()).toMatchObject({ status: 'error', last_error: 'connector_left' });
+  });
+
   it('disconnects: data and token gone, grant revoked unless another site shares the account', async () => {
     // The second site uses the same Google account: disconnecting the first keeps the grant.
-    expect((await member.del(`/api/sites/${siteId}/gsc`)).status).toBe(403);
-    expect((await owner.del(`/api/sites/${siteId}/gsc`)).json).toEqual({ ok: true });
+    expect((await member.delete(`/api/sites/${siteId}/gsc`)).status).toBe(403);
+    expect((await owner.delete(`/api/sites/${siteId}/gsc`)).json).toEqual({ ok: true });
     expect(await conn()).toBeUndefined();
-    expect((await t.db.query('SELECT count(*)::int AS n FROM gsc_daily WHERE site_id = $1', [siteId])).rows[0].n).toBe(0);
+    expect((await t.sql.query('SELECT count(*)::int AS n FROM gsc_daily WHERE site_id = $1', [siteId])).rows[0].n).toBe(0);
     expect(google.revoked).toEqual([]);
 
-    const site2 = (await t.db.query<{ site_id: string }>('SELECT site_id FROM gsc_connections')).rows[0].site_id;
-    await owner.del(`/api/sites/${site2}/gsc`);
+    const site2 = (await t.sql.query<{ site_id: string }>('SELECT site_id FROM gsc_connections')).rows[0].site_id;
+    await owner.delete(`/api/sites/${site2}/gsc`);
     expect(google.revoked).toEqual(['rt-secret-1']);
     expect((await owner.get(`/api/sites/${siteId}/gsc`)).json.connection).toBeNull();
   });

@@ -120,7 +120,7 @@ export function UserMenu({ orgId }: { orgId?: string }) {
           </Link>
           {org && (
             <Link role="menuitem" to={`/orgs/${org.id}/members`} onClick={close}>
-              Members of {org.name}
+              {org.name}: members &amp; websites
             </Link>
           )}
           <div className="menu-sep" />

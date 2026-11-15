@@ -1,10 +1,9 @@
 import fs from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { App } from '../src/app.ts';
 import { computeStats, shortRoute, WEEKS, type Stats } from '../src/stats.ts';
-import { Browser, freshApp, signUpVerified } from './helpers.ts';
+import { Browser, freshApp, signUpVerified, type TestApp } from './helpers.ts';
 
-let t: App;
+let t: TestApp;
 let owner: Browser;
 let outsider: Browser;
 let siteId = '';
@@ -24,7 +23,7 @@ afterAll(async () => {
 });
 
 async function visit(v: { at: string; landing: string; source: string; device: string; test?: boolean }): Promise<string> {
-  const { rows } = await t.db.query<{ id: string }>(
+  const { rows } = await t.sql.query<{ id: string }>(
     `INSERT INTO visits (site_id, visitor_key, started_at, last_seen_at, landing_path, source_channel, device, test)
      VALUES ($1, md5(random()::text), $2, $2, $3, $4, $5, $6) RETURNING id`,
     [siteId, v.at, v.landing, v.source, v.device, v.test ?? false],
@@ -33,7 +32,7 @@ async function visit(v: { at: string; landing: string; source: string; device: s
 }
 
 async function pageview(visitId: string, p: { pv: string; seq: number; path: string; at: string; title?: string; active?: number; scroll?: number; sections?: string[]; load?: number }) {
-  await t.db.query(
+  await t.sql.query(
     `INSERT INTO pageviews (pv, site_id, visit_id, seq, path, title, nav, received_at, load_ms, active_ms, scroll, sections, has_engage)
      VALUES ($1, $2, $3, $4, $5, $6, 'load', $7, $8, $9, $10, $11, $12)`,
     [p.pv, siteId, visitId, p.seq, p.path, p.title ?? null, p.at, p.load ?? null, p.active ?? null, p.scroll ?? null, p.sections ?? [], p.active !== undefined],
@@ -41,7 +40,7 @@ async function pageview(visitId: string, p: { pv: string; seq: number; path: str
 }
 
 async function request(r: { visitId: string | null; pv?: string; path?: string; at: string; counts?: boolean; spam?: boolean; confirmation?: string; source?: string; formId?: string }) {
-  await t.db.query(
+  await t.sql.query(
     `INSERT INTO requests (site_id, visit_id, pv, path, channel, confirmation, source, form_id, counts, spam, received_at)
      VALUES ($1, $2, $3, $4, 'form', $5, $6, $7, $8, $9, $10)`,
     [siteId, r.visitId, r.pv ?? null, r.path ?? null, r.confirmation ?? 'server', r.source ?? null, r.formId ?? null, r.counts ?? true, r.spam ?? false, r.at],
@@ -50,7 +49,7 @@ async function request(r: { visitId: string | null; pv?: string; path?: string; 
 
 describe('stats', () => {
   it('is empty before ingest has created its tables', async () => {
-    const s = await computeStats(t.db, siteId, { weeks: 4, now: NOW });
+    const s = await computeStats(t.sql, siteId, { weeks: 4, now: NOW });
     expect(s.weeks).toHaveLength(WEEKS);
     expect(s.weeks.at(-1)).toBe('2026-11-16');
     expect(s.pages).toEqual([]);
@@ -58,8 +57,8 @@ describe('stats', () => {
   });
 
   it('seeds tracking data', async () => {
-    await t.db.query(fs.readFileSync(new URL('../../ingest/migrations/001_init.sql', import.meta.url), 'utf8'));
-    await t.db.query(`UPDATE site_config SET request_rules = $2 WHERE site_id = $1`, [
+    await t.sql.query(fs.readFileSync(new URL('../../ingest/migrations/001_init.sql', import.meta.url), 'utf8'));
+    await t.sql.query(`UPDATE site_config SET request_rules = $2 WHERE site_id = $1`, [
       siteId,
       JSON.stringify([{ method: 'server', source: 'cf7', form_id: '12', form: 'Contact', counts: true }]),
     ]);
@@ -68,11 +67,11 @@ describe('stats', () => {
     const a = await visit({ at: '2026-11-17T10:00:00Z', landing: '/', source: 'google_organic', device: 'mobile' });
     await pageview(a, { pv: 'a1', seq: 1, path: '/', at: '2026-11-17T10:00:00Z', title: 'Home', active: 40_000, scroll: 80, sections: ['prices'], load: 1200 });
     await pageview(a, { pv: 'a2', seq: 2, path: '/kontakt', at: '2026-11-17T10:03:00Z', title: 'Kontakt', active: 20_000, scroll: 100 });
-    await t.db.query(`INSERT INTO clicks (site_id, visit_id, pv, eid, kind, received_at) VALUES ($1, $2, 'a1', 'e1', 'call', '2026-11-17T10:01:00Z')`, [siteId, a]);
+    await t.sql.query(`INSERT INTO clicks (site_id, visit_id, pv, eid, kind, received_at) VALUES ($1, $2, 'a1', 'e1', 'call', '2026-11-17T10:01:00Z')`, [siteId, a]);
     await request({ visitId: a, pv: 'a2', path: '/kontakt', at: '2026-11-17T10:05:00Z', source: 'cf7', formId: '12' });
     await request({ visitId: a, pv: 'a2', path: '/kontakt', at: '2026-11-17T10:05:01Z', confirmation: 'browser', formId: 'Contact', counts: false }); // shadow
     for (const step of [1, 2])
-      await t.db.query(`INSERT INTO flow_steps (site_id, visit_id, pv, flow, flow_id, step, name, received_at) VALUES ($1, $2, 'a1', 'booking', 'bk', $3, $4, '2026-11-17T10:02:00Z')`, [
+      await t.sql.query(`INSERT INTO flow_steps (site_id, visit_id, pv, flow, flow_id, step, name, received_at) VALUES ($1, $2, 'a1', 'booking', 'bk', $3, $4, '2026-11-17T10:02:00Z')`, [
         siteId,
         a,
         step,
@@ -82,7 +81,7 @@ describe('stats', () => {
     // B: direct, desktop, short look at /, starts the booking only.
     const b = await visit({ at: '2026-11-16T08:00:00Z', landing: '/', source: 'direct', device: 'desktop' });
     await pageview(b, { pv: 'b1', seq: 1, path: '/', at: '2026-11-16T08:00:00Z', active: 5_000, scroll: 30, load: 800 });
-    await t.db.query(`INSERT INTO flow_steps (site_id, visit_id, pv, flow, flow_id, step, name, received_at) VALUES ($1, $2, 'b1', 'booking', 'bk', 1, 'Service', '2026-11-16T08:00:10Z')`, [siteId, b]);
+    await t.sql.query(`INSERT INTO flow_steps (site_id, visit_id, pv, flow, flow_id, step, name, received_at) VALUES ($1, $2, 'b1', 'booking', 'bk', 1, 'Service', '2026-11-16T08:00:10Z')`, [siteId, b]);
 
     // E: Monday 00:30 in Berlin, still Sunday in UTC: belongs to the current week.
     const e = await visit({ at: '2026-11-15T23:30:00Z', landing: '/', source: 'direct', device: 'tablet' });
@@ -106,7 +105,7 @@ describe('stats', () => {
 
   let s: Stats;
   it('counts the weekly series by the site timezone', async () => {
-    s = await computeStats(t.db, siteId, { weeks: 4, now: NOW });
+    s = await computeStats(t.sql, siteId, { weeks: 4, now: NOW });
     expect(s.timezone).toBe('Europe/Berlin');
     expect(s.range).toEqual({ weeks: 4, from: '2026-10-25T23:00:00.000Z' });
     expect(s.site.series.at(-1)).toEqual({ vis: 3, conv: 1, inq: 2, cta: 1, pvs: 4, eng: 3, activeMs: 65_000, s75: 2 });

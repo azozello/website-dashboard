@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import type pg from 'pg';
 import type { Settings } from './config.ts';
-import type { Db } from './db.ts';
+import { actor, type Db } from './db.ts';
 import { GSC_SCOPE, GoogleError, type AnalyticsRow, type Dimension, type GoogleApi, type GscProperty } from './google.ts';
 import { sha256hex } from './keys.ts';
 import { normalisePath } from './paths.ts';
@@ -27,7 +27,8 @@ import { topRole, type Guards } from './tenant.ts';
  * the last REREAD_DAYS, because Google revises recent days. Each chunk of days is replaced in one transaction.
  *
  * Google refusing the refresh token (revoked, or older than 7 days while the OAuth app is in Testing) or the
- * property makes the status `error`: someone has to connect again. Outages are retried on the next hourly run.
+ * property, or the connecting admin leaving the organisation, makes the status `error`: someone has to connect
+ * again. Outages are retried on the next hourly run. Imports act for a user like any request (row-level security).
  */
 
 export const STATE_TTL_MS = 10 * 60 * 1000;
@@ -158,18 +159,16 @@ export function createGsc(db: Db, settings: Settings, google: GoogleApi | null, 
   const inflight = new Set<Promise<unknown>>();
 
   /**
-   * Runs fn on one connection marked as the sync job (app.job = 'gsc_sync'): there is no signed-in user, and with
-   * row-level security on (migrations/007_gsc.sql) only that mark lets it read sites and write every site's rows.
+   * Runs fn on one pooled connection. It acts for whoever the current actor is (db.ts): the admin of the request
+   * that started the import, or, for the daily run, the admin who connected the site (syncDue). Row-level
+   * security (migrations/008_rls.sql) applies as to that person.
    */
-  async function asJob<T>(fn: (c: pg.PoolClient) => Promise<T>): Promise<T> {
+  async function withClient<T>(fn: (c: pg.PoolClient) => Promise<T>): Promise<T> {
     const c = await db.connect();
-    let broken: Error | undefined;
     try {
-      await c.query(`SELECT set_config('app.job', 'gsc_sync', false)`);
       return await fn(c);
     } finally {
-      await c.query(`SELECT set_config('app.job', '', false)`).catch((err: Error) => (broken = err));
-      c.release(broken);
+      c.release();
     }
   }
 
@@ -183,10 +182,13 @@ export function createGsc(db: Db, settings: Settings, google: GoogleApi | null, 
     return out;
   }
 
-  /** Imports the site's Search Analytics; a no-op when it isn't active or another sync for it is running. */
+  /**
+   * Imports the site's Search Analytics; a no-op when it isn't active, another sync for it is running, or the
+   * current actor isn't an admin of the site. Run it inside an actor (a request, or actor.run in syncDue).
+   */
   async function syncSite(siteId: string, now = new Date()): Promise<SyncResult> {
     if (!available) return { status: 'skipped' };
-    return asJob(async (c) => {
+    return withClient(async (c) => {
       const claim = await c.query<{ property: string; refresh_token_enc: string; synced_through: string | null; origins: string[] }>(
         `UPDATE gsc_connections g SET sync_started_at = now()
            FROM sites s
@@ -272,18 +274,16 @@ export function createGsc(db: Db, settings: Settings, google: GoogleApi | null, 
     });
   }
 
-  /** Syncs every active connection not synced in the last SYNC_EVERY_HOURS, one after the other. */
+  /**
+   * Syncs every active connection not synced in the last SYNC_EVERY_HOURS, one after the other, each acting for
+   * the admin who connected it. app_gsc_due() (SECURITY DEFINER, migrations/008_rls.sql) is the only part that
+   * sees every site: it lists what is due and marks connections whose admin is gone as broken.
+   */
   async function syncDue(now = new Date()) {
     if (!available) return [];
-    const due = await asJob((c) =>
-      c.query<{ site_id: string }>(
-        `SELECT site_id FROM gsc_connections
-          WHERE status = 'active' AND property IS NOT NULL AND (last_sync_at IS NULL OR last_sync_at < now() - interval '${SYNC_EVERY_HOURS} hours')
-          ORDER BY last_sync_at NULLS FIRST`,
-      ),
-    );
+    const due = await db.query<{ site_id: string; user_id: string }>('SELECT site_id, user_id FROM app_gsc_due($1)', [SYNC_EVERY_HOURS]);
     const results: (SyncResult & { siteId: string })[] = [];
-    for (const r of due.rows) results.push({ siteId: r.site_id, ...(await syncSite(r.site_id, now)) });
+    for (const r of due.rows) results.push({ siteId: r.site_id, ...(await actor.run({ userId: r.user_id }, () => syncSite(r.site_id, now))) });
     return results;
   }
 

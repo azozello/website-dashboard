@@ -281,4 +281,15 @@ export function registerRoutes(app: FastifyInstance, db: Db, guards: Guards, set
       return { site_key: siteKey, site_secret: secret };
     },
   );
+
+  /**
+   * Delete a site with everything recorded for it (owner only; cascades to its config and tracking data).
+   * Irreversible: the dashboard makes the user type the site's name first. The collector stops accepting the
+   * site's key within 30 s (its site cache).
+   */
+  app.delete('/api/sites/:siteId', { preHandler: requireSite('owner') }, async (req, reply) => {
+    const { rowCount } = await db.query('DELETE FROM sites WHERE id = $1', [req.tenant!.siteId]);
+    if (!rowCount) return reply.code(404).send({ error: 'not_found' });
+    return { ok: true };
+  });
 }

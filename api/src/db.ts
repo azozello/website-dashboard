@@ -1,11 +1,54 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 
-export type Db = pg.Pool;
+/** What the app needs from a pool: a pg.Pool, or the tenant pool below. */
+export interface Db {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  query<R extends pg.QueryResultRow = any>(text: string, values?: unknown[]): Promise<pg.QueryResult<R>>;
+  connect(): Promise<pg.PoolClient>;
+  end(): Promise<void>;
+}
 
-export const createPool = (url: string): Db => new pg.Pool({ connectionString: url, max: 10 });
+export const createPool = (url: string, max = 10) => new pg.Pool({ connectionString: url, max });
+
+/** Whom the current request acts for. app.ts opens one per request; the guards (tenant.ts) fill in the user. */
+export const actor = new AsyncLocalStorage<{ userId: string | null }>();
+
+/**
+ * Pool for tenant data: the second layer behind the guards. Every connection it hands out first gets
+ * app.user_id = the signed-in user of the current request ('' outside a request, or before a guard ran).
+ * The row-level security policies (migrations/008_rls.sql) then limit that connection to the user's
+ * organisations, so a query that forgets its site filter finds nothing of other tenants.
+ * It is set on every checkout, so a connection never carries a previous request's user.
+ */
+export function createTenantPool(url: string, max = 10): Db {
+  const pool = createPool(url, max);
+  async function connect() {
+    const client = await pool.connect();
+    try {
+      await client.query(`SELECT set_config('app.user_id', $1, false)`, [actor.getStore()?.userId ?? '']);
+    } catch (err) {
+      client.release(err as Error);
+      throw err;
+    }
+    return client;
+  }
+  return {
+    connect,
+    async query(text, values) {
+      const client = await connect();
+      try {
+        return await client.query(text, values);
+      } finally {
+        client.release();
+      }
+    },
+    end: () => pool.end(),
+  };
+}
 
 export const MIGRATIONS_DIR = fileURLToPath(new URL('../migrations/', import.meta.url));
 

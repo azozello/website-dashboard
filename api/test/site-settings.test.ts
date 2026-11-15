@@ -1,10 +1,9 @@
 import fs from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { App } from '../src/app.ts';
 import { normalisePath } from '../src/paths.ts';
-import { Browser, firstUrl, freshApp, lastMail, signUpVerified } from './helpers.ts';
+import { Browser, firstUrl, freshApp, lastMail, signUpVerified, type TestApp } from './helpers.ts';
 
-let t: App;
+let t: TestApp;
 let owner: Browser;
 let viewer: Browser;
 let outsider: Browser;
@@ -62,7 +61,7 @@ describe('site config', () => {
     expect(r.status, JSON.stringify(r.json)).toBe(200);
     expect(r.json.config.version).toBe(1);
 
-    const { rows } = await t.db.query('SELECT * FROM site_config WHERE site_id = $1', [ids.wp]);
+    const { rows } = await t.sql.query('SELECT * FROM site_config WHERE site_id = $1', [ids.wp]);
     expect(rows[0]).toMatchObject({
       config_version: 1,
       spa: 'off',
@@ -115,7 +114,7 @@ describe('site config', () => {
   });
 
   it('shows a CLI-written forms_browser entry as a browser rule', async () => {
-    await t.db.query(`UPDATE site_config SET request_rules = '[]', forms_browser = $2 WHERE site_id = $1`, [
+    await t.sql.query(`UPDATE site_config SET request_rules = '[]', forms_browser = $2 WHERE site_id = $1`, [
       ids.wix,
       JSON.stringify([{ form: 'contact', selector: 'form', success_selector: '.ok' }]),
     ]);
@@ -149,14 +148,14 @@ describe('setup checklist', () => {
 
   it('computes §12 from the tracking tables and stores the results', async () => {
     // The tracking tables, exactly as ingest creates them.
-    await t.db.query(fs.readFileSync(new URL('../../ingest/migrations/001_init.sql', import.meta.url), 'utf8'));
+    await t.sql.query(fs.readFileSync(new URL('../../ingest/migrations/001_init.sql', import.meta.url), 'utf8'));
     const visit = async (siteId: string, test: boolean, ago: string) => {
-      const v = await t.db.query(
+      const v = await t.sql.query(
         `INSERT INTO visits (site_id, visitor_key, started_at, last_seen_at, source_channel, device, test)
          VALUES ($1, md5(random()::text), now() - $3::interval, now() - $3::interval, 'direct', 'desktop', $2) RETURNING id`,
         [siteId, test, ago],
       );
-      await t.db.query(
+      await t.sql.query(
         `INSERT INTO pageviews (pv, site_id, visit_id, seq, path, nav, received_at) VALUES (substr(md5(random()::text), 1, 16), $1, $2, 1, '/', 'load', now() - $3::interval)`,
         [siteId, v.rows[0].id, ago],
       );
@@ -164,13 +163,13 @@ describe('setup checklist', () => {
     };
     const v1 = await visit(ids.wp, false, '2 hours');
     await visit(ids.wp, true, '2 hours'); // test event, but older than 1 h
-    await t.db.query(
+    await t.sql.query(
       `INSERT INTO requests (site_id, visit_id, channel, confirmation, source, form_id, counts, spam, received_at)
        VALUES ($1, $2, 'form', 'server', 'cf7', '12', true, false, now() - interval '3 days'),
               ($1, NULL, 'form', 'server', 'cf7', '12', true, true, now())`,
       [ids.wp, v1],
     );
-    await t.db.query(`INSERT INTO plugin_status (site_id, platform, plugin_version, env, last_hello_at) VALUES ($1, 'wordpress', '0.1.0', $2, now() - interval '1 hour')`, [
+    await t.sql.query(`INSERT INTO plugin_status (site_id, platform, plugin_version, env, last_hello_at) VALUES ($1, 'wordpress', '0.1.0', $2, now() - interval '1 hour')`, [
       ids.wp,
       JSON.stringify({ head_hook_ok: true, plugin_version: '0.1.0', forms: [{ source: 'cf7', id: '12', title: 'Contact' }], cache: [{ plugin: 'wp-rocket', delay_js: true, r1_excluded: false }] }),
     ]);
@@ -186,7 +185,7 @@ describe('setup checklist', () => {
     expect(c.buttons_found).toMatchObject({ status: 'pending', reason: 'no_contact_click' });
     expect(c.gsc_connected).toMatchObject({ status: 'pending', reason: 'gsc_not_available' });
 
-    const stored = await t.db.query('SELECT check_id, status FROM site_checks WHERE site_id = $1 ORDER BY check_id', [ids.wp]);
+    const stored = await t.sql.query('SELECT check_id, status FROM site_checks WHERE site_id = $1 ORDER BY check_id', [ids.wp]);
     expect(stored.rows).toContainEqual({ check_id: 'delay_js_ok', status: 'fail' });
     expect(stored.rowCount).toBe(9);
 
@@ -195,7 +194,7 @@ describe('setup checklist', () => {
 
     // A fresh test event and a broken head hook.
     await visit(ids.wp, true, '1 minute');
-    await t.db.query(`UPDATE plugin_status SET env = env || '{"head_hook_ok": false, "head_hook_error": "tag_missing"}' WHERE site_id = $1`, [ids.wp]);
+    await t.sql.query(`UPDATE plugin_status SET env = env || '{"head_hook_ok": false, "head_hook_error": "tag_missing"}' WHERE site_id = $1`, [ids.wp]);
     const c2 = byId((await owner.get(`/api/sites/${ids.wp}/checks`)).json.checks);
     expect(c2.test_event.status).toBe('pass');
     expect(c2.plugin_ok).toMatchObject({ status: 'fail', reason: 'head_hook_failed', detail: { error: 'tag_missing' } });
@@ -206,7 +205,7 @@ describe('setup checklist', () => {
     expect(before.plugin_ok).toBeUndefined();
     expect(before.wix_webhook).toMatchObject({ status: 'fail', reason: 'no_webhook_request' });
     expect(before.script_live).toMatchObject({ status: 'fail', reason: 'no_pageview_ever' });
-    await t.db.query(`INSERT INTO requests (site_id, channel, confirmation, form_id, counts, received_at) VALUES ($1, 'form', 'webhook', 'contact', false, now())`, [ids.wix]);
+    await t.sql.query(`INSERT INTO requests (site_id, channel, confirmation, form_id, counts, received_at) VALUES ($1, 'form', 'webhook', 'contact', false, now())`, [ids.wix]);
     const after = byId((await owner.get(`/api/sites/${ids.wix}/checks`)).json.checks);
     expect(after.wix_webhook.status).toBe('pass');
     expect(after.form_request.status).toBe('fail'); // the webhook is the shadow here: it doesn't count
