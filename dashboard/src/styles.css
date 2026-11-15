@@ -205,3 +205,54 @@ th.n button{flex-direction:row-reverse}
 .fix li:hover .where{color:var(--r1);text-decoration:underline}
 @media (max-width:1100px){.grid-eq{grid-template-columns:1fr}}
 @media (max-width:820px){.rail .label{display:none}.vrow{grid-template-columns:110px minmax(0,1fr) 54px}}
+
+/* ======================================================================
+   Refinements on top of the prototype (phones, iOS Safari)
+   ====================================================================== */
+
+/* Schibsted Grotesk's tnum feature also widens "," "." ":" (4px → 9.5px), which
+   spaced out prose ("Booking , call") and numbers ("+0 . 3 pts", "1 : 57"). */
+body{font-variant-numeric:normal}
+
+/* Keep the first and last x-axis labels inside the chart instead of centred on its edges */
+.xl.first{transform:none}
+.xl.last{transform:translateX(-100%)}
+
+/* A one-column grid must not grow to its tables' min-content width:
+   it pushed every page view 122px wider than an iPhone screen. */
+@media (max-width:1100px){.grid-eq{grid-template-columns:minmax(0,1fr)}}
+
+@media (max-width:820px){
+  /* Header: logo + demo badge, then site switcher, then a full-width range control */
+  .top{gap:10px 12px}
+  .top .grow{display:none}
+  .logo{order:1}
+  .demo{order:2;margin-left:auto}
+  .site{order:3}
+  .seg{order:4;flex:1 1 100%}
+  .seg button{flex:1 1 0;min-height:44px}
+
+  /* Horizontal section strip: no scrollbar (iOS hides it anyway) */
+  .rail{scrollbar-width:none}
+  .rail::-webkit-scrollbar{display:none}
+
+  /* Bar rows: room for short labels on one line ("Headline and offer", "Under 10 seconds") */
+  .vrow{grid-template-columns:136px minmax(0,1fr) 44px}
+
+  /* Sort headers: 44px tap targets without making the header row taller */
+  thead th{padding-top:0;padding-bottom:0}
+  thead th button{min-height:44px;padding:0}
+
+  /* Wide tables scroll sideways inside their panel; keep the row label in view */
+  th:first-child,td:first-child{position:sticky;left:0;z-index:1;background:var(--surface);white-space:normal;min-width:176px;max-width:46vw;box-shadow:inset -1px 0 0 var(--line-soft)}
+  tbody tr:hover td:first-child{background:#FAFBFA}
+}
+
+/* Touch screens keep :hover after a tap; don't leave hover styling stuck on */
+@media (hover:none){
+  .rail button:not([aria-current="page"]):hover{background:transparent;color:var(--muted)}
+  .card:not([aria-pressed="true"]):hover{border-color:var(--line)}
+  tbody tr:hover td{background:transparent}
+  tbody tr:hover td:first-child{background:var(--surface)}
+  .fix li:hover .where{color:inherit;text-decoration:none}
+}

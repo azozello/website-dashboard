@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { RANGES } from '../lib/analysis';
 import { PAGES } from '../mock/data';
@@ -54,13 +54,26 @@ function TopBar() {
 function Rail() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const ref = useRef<HTMLElement>(null);
+
+  // On phones the rail is a horizontal strip: keep the current section in view.
+  useEffect(() => {
+    const rail = ref.current;
+    const btn = rail?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!rail || !btn || rail.scrollWidth <= rail.clientWidth) return;
+    const r = rail.getBoundingClientRect();
+    const b = btn.getBoundingClientRect();
+    // Instant: a smooth scroll gets cancelled by the page's scroll-to-top on navigation.
+    rail.scrollLeft += b.left - r.left - (r.width - b.width) / 2;
+  }, [pathname]);
+
   const item = (to: string, label: string, sub?: boolean) => (
     <button key={to} className={sub ? 'sub' : undefined} aria-current={pathname === to ? 'page' : undefined} onClick={() => navigate(to)}>
       {label}
     </button>
   );
   return (
-    <nav className="rail" aria-label="Sections">
+    <nav ref={ref} className="rail" aria-label="Sections">
       {item('/', 'Overview')}
       <div className="label">Pages</div>
       {PAGES.map((p) => item(pagePath(p), p.name, true))}
