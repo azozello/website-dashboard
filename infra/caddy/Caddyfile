@@ -10,6 +10,7 @@
 		format filter {
 			wrap json
 			fields {
+				remote delete
 				request>remote_ip delete
 				request>remote_port delete
 				request>client_ip delete

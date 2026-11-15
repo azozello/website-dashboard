@@ -9,7 +9,7 @@ Internet ──► Hetzner Cloud Firewall (in: 80, 443 from anywhere; 22 from ad
               ▼
           rate1-1 (CX23, Ubuntu 24.04, nbg1)
           ┌──────────────────────── docker network "edge" 172.30.0.0/24 ───────────────┐
-          │ caddy :80/:443 ──► collect.bazed.live ──► ingest:8080                       │
+          │ caddy :80/:443 ──► collect.bazed.live ──► ingest:8080    (+ IPv6 fd00:30::/64) │
           │                └─► app.bazed.live     ──► app:3000                          │
           │                └─► bazed.live         ──► 302 to app.bazed.live             │
           └──────────────────────────────────────────────────────────────────────────────┘
@@ -33,8 +33,10 @@ Internet ──► Hetzner Cloud Firewall (in: 80, 443 from anywhere; 22 from ad
 
 **Key facts**
 
-- `TRUSTED_PROXY_CIDRS=172.30.0.0/24` (the `edge` network). Caddy is the only proxy in it. It *replaces* any client-sent
-  `X-Forwarded-For` with the real client address, so ingest can trust that header from this range.
+- `TRUSTED_PROXY_CIDRS=172.30.0.0/24,fd00:30::/64` (the `edge` network, IPv4 + IPv6). Caddy is the only proxy in it. It
+  *replaces* any client-sent `X-Forwarded-For` with the real client address, so ingest can trust that header from this
+  range. `edge` must keep `enable_ipv6: true`: without it Docker relays IPv6 clients through `docker-proxy` and every
+  IPv6 visitor shows up as `172.30.0.1`.
 - `CLIENT_IP_HEADER=X-Forwarded-For`.
 - On the server: repo checkout `/opt/rate1/repo` (detached at the deployed commit), secrets `/opt/rate1/.env` (mode 600,
   owner `deploy`), dumps `/opt/rate1/backups/`.

@@ -82,7 +82,7 @@ write_files:
       DOMAIN=${domain}
       COLLECT_BASE_URL=https://collect.${domain}
       APP_BASE_URL=https://app.${domain}
-      TRUSTED_PROXY_CIDRS=172.30.0.0/24
+      TRUSTED_PROXY_CIDRS=172.30.0.0/24,fd00:30::/64
       CLIENT_IP_HEADER=X-Forwarded-For
       GOOGLE_CLIENT_ID=
       GOOGLE_CLIENT_SECRET=

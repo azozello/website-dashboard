@@ -74,11 +74,15 @@ services:
     networks: [internal]
 
 networks:
-  # Caddy + the two web services. Its CIDR is TRUSTED_PROXY_CIDRS for ingest: Caddy is the only proxy in it.
+  # Caddy + the two web services. Its CIDRs are TRUSTED_PROXY_CIDRS for ingest: Caddy is the only proxy in it.
+  # IPv6 must be on: without it Docker relays IPv6 clients through docker-proxy and every IPv6 visitor
+  # reaches Caddy as the gateway 172.30.0.1 instead of their real address.
   edge:
+    enable_ipv6: true
     ipam:
       config:
         - subnet: 172.30.0.0/24
+        - subnet: fd00:30::/64
   # Database network: no route to the internet, no published ports.
   internal:
     internal: true
