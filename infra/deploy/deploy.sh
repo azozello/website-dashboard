@@ -19,7 +19,7 @@ dc up -d --remove-orphans --wait --wait-timeout 180
 # When Compose recreates a network it can reattach a container without its service alias, so Caddy can no longer
 # resolve e.g. "app" and answers 502 (seen 2026-11-15 after enabling IPv6 on edge). Check every upstream name from
 # Caddy and recreate the service if it doesn't resolve.
-for svc in ingest app; do
+for svc in ingest app api; do
   if ! dc exec -T caddy getent hosts "$svc" >/dev/null 2>&1; then
     echo "deploy.sh: '$svc' does not resolve from caddy; recreating it"
     dc up -d --force-recreate --no-deps --wait --wait-timeout 120 "$svc"

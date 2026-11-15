@@ -90,3 +90,7 @@ jobs:
           # Data Contract §2: GET /healthz answers 200 on both hosts.
           curl -fsS -o /dev/null -w 'collect /healthz: %{http_code}\n' https://collect.${{ vars.DOMAIN || 'bazed.live' }}/healthz
           curl -fsS -o /dev/null -w 'app /healthz: %{http_code}\n' https://app.${{ vars.DOMAIN || 'bazed.live' }}/healthz
+          # The app API answers on the same host: JSON from /api/config, not the dashboard's index.html.
+          config="$(curl -fsS https://app.${{ vars.DOMAIN || 'bazed.live' }}/api/config)"
+          echo "app /api/config: $config"
+          echo "$config" | grep -q '"google"' || { echo "::error::app /api/config is not the API's JSON"; exit 1; }

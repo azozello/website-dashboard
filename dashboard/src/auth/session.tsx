@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { ApiError, api, authClient, type Me } from './client';
+import { ApiError, api, authClient, useAuthSession, type Me } from './client';
 
 interface MeState {
   me: Me;
@@ -29,7 +29,7 @@ export function Loading() {
  * The server checks access again on every API call; this only shapes the UI.
  */
 export function RequireAuth({ children }: { children?: ReactNode }) {
-  const { data: session, isPending } = authClient.useSession();
+  const { session, isPending } = useAuthSession();
   const location = useLocation();
   const [me, setMe] = useState<Me | null>(null);
   const [failed, setFailed] = useState(false);

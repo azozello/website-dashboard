@@ -67,6 +67,15 @@ The `awk` line assumes one context in `cli.toml`; with several, copy the token o
 installs everything and runs the first deploy of `bootstrap_ref` (≈ 3–5 min). Watch it with
 `ssh ops@<ip> sudo cloud-init status --wait` and `sudo tail -f /var/log/cloud-init-output.log`.
 
+That first deploy stops at `compose config` because `SMTP_URL` is empty (cloud-init generates `BETTER_AUTH_SECRET`
+and `MAIL_FROM`, but can't know your mail provider). Set it, then deploy:
+
+```bash
+ssh ops@<ip>
+sudo -u deploy -H nano /opt/rate1/.env               # SMTP_URL=smtps://user:pass@smtp.example.eu:465
+sudo -u deploy -H rate1-deploy main
+```
+
 **DNS** (bazed.live is hosted at Websupport.sk, not managed in code): add the records printed by
 `tofu output dns_records` — A and AAAA for `collect`, `app` and the apex. TTL 300 is fine. Caddy gets the certificates
 on its own once the names resolve (it retries in the background until then).
@@ -95,11 +104,17 @@ ssh ops@<ip> sudo -u deploy -H rate1-deploy main      # or a branch / commit sha
 
 ## App images
 
-There is no registry: `deploy.sh` builds `rate1-ingest` (`ingest/Dockerfile`: ingest + `r1.js` from `tracker/`) and
-`rate1-app` (`dashboard/Dockerfile`: the dashboard's static build behind Caddy) on the server from the checked-out
-commit, with the repository root as build context. They listen on 8080 (ingest) and 3000 (app) and answer
-`GET /healthz` with `{"ok": true, "version": "<deployed short sha>"}`, so `curl https://collect.bazed.live/healthz`
-shows which commit is live.
+There is no registry: `deploy.sh` builds `rate1-ingest` (`ingest/Dockerfile`: ingest + `r1.js` from `tracker/`),
+`rate1-app` (`dashboard/Dockerfile`: the dashboard's static build behind Caddy) and `rate1-api` (`api/Dockerfile`:
+sign-in and tenants) on the server from the checked-out commit, with the repository root as build context. They
+listen on 8080 (ingest), 3000 (app) and 8081 (api) and answer `GET /healthz` with
+`{"ok": true, "version": "<deployed short sha>"}`, so `curl https://collect.bazed.live/healthz` shows which commit
+is live. The edge Caddy sends `app.<domain>/api/*` to `api` and everything else on `app.<domain>` to `app`.
+
+Before `api` starts, the one-shot `api-migrate` applies `api/migrations` as the `postgres` superuser (after ingest
+has migrated: `sites` belongs to `ingest_rw`, and the API adds `sites.org_id`), then exits. The API itself runs as
+`app_rw`. It needs `BETTER_AUTH_SECRET`, `SMTP_URL` and `MAIL_FROM` in `/opt/rate1/.env`; without them every deploy
+stops at `compose config`. In development, mails are printed to the API log; when deployed they go out over SMTP.
 
 1. Change the code, merge to `main`. CI deploys it (build ≈ 2–4 min on the CX23).
 2. Roll back: revert the commit and merge, or deploy an older sha: `sudo -u deploy -H rate1-deploy <sha>`.

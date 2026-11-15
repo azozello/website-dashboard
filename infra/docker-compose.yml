@@ -44,7 +44,7 @@ services:
 
   app:
     # Built on the server from the deployed commit (deploy.sh runs `compose build`); image rate1-app.
-    # Today a static build of the dashboard (mocked data) served by Caddy on :3000.
+    # The dashboard's static build served by Caddy on :3000; its /api/* calls go to the `api` service.
     build:
       context: ..
       dockerfile: dashboard/Dockerfile
@@ -67,6 +67,56 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks: [edge, internal]
+
+  api-migrate:
+    # One-shot: applies api/migrations, then exits. Runs as the superuser after ingest has created `sites`
+    # (owned by ingest_rw), because 003_tenancy.sql adds sites.org_id, which app_rw may not do. Tables it
+    # creates are granted to app_rw by the same migrations.
+    build:
+      context: ..
+      dockerfile: api/Dockerfile
+    command: ["node", "src/migrate.ts"]
+    restart: "no"
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/rate1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ingest:
+        condition: service_healthy
+    networks: [internal]
+
+  api:
+    # App API (api/): sign-in (email + MFA, Google) and tenant authorization. Caddy routes app.<domain>/api/* here.
+    # Needs internet (edge) to reach the SMTP server.
+    build:
+      context: ..
+      dockerfile: api/Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_VERSION: ${APP_VERSION:-dev}
+      ENV: ${ENV}
+      DATABASE_URL: postgres://app_rw:${APP_DB_PASSWORD}@postgres:5432/rate1
+      APP_BASE_URL: ${APP_BASE_URL}
+      COLLECT_BASE_URL: ${COLLECT_BASE_URL}
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in /opt/rate1/.env}
+      SMTP_URL: ${SMTP_URL:?set SMTP_URL in /opt/rate1/.env}
+      MAIL_FROM: ${MAIL_FROM:?set MAIL_FROM in /opt/rate1/.env}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:8081/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api-migrate:
+        condition: service_completed_successfully
     networks: [edge, internal]
 
   postgres:
