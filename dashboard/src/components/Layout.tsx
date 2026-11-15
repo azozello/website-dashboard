@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { SiteSwitcher, UserMenu } from '../auth/menus';
 import { useMe } from '../auth/session';
@@ -24,8 +24,19 @@ function TopBar() {
   const siteId = useSiteId();
   const { me } = useMe();
   const orgId = me.sites.find((s) => s.id === siteId)?.orgId;
+  const ref = useRef<HTMLElement>(null);
+  // Publish the bar's real height so the sticky rail sits exactly below it, even when the bar wraps.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const set = () => document.documentElement.style.setProperty('--top-h', `${el.getBoundingClientRect().height}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
-    <header className="top">
+    <header className="top" ref={ref}>
       <Logo />
       <SiteSwitcher siteId={siteId} />
       <div className="grow" />
@@ -48,15 +59,18 @@ function Rail() {
   const siteId = useSiteId();
   const ref = useRef<HTMLElement>(null);
 
-  // On phones the rail is a horizontal strip: keep the current section in view.
+  // Keep the current section in view inside the rail. On phones the rail is a horizontal strip: centre it.
+  // On short desktop screens the rail scrolls vertically: reveal it only when hidden, so a click never shifts the rail.
   useEffect(() => {
     const rail = ref.current;
     const btn = rail?.querySelector<HTMLElement>('[aria-current="page"]');
-    if (!rail || !btn || rail.scrollWidth <= rail.clientWidth) return;
+    if (!rail || !btn) return;
     const r = rail.getBoundingClientRect();
     const b = btn.getBoundingClientRect();
     // Instant: a smooth scroll gets cancelled by the page's scroll-to-top on navigation.
-    rail.scrollLeft += b.left - r.left - (r.width - b.width) / 2;
+    if (rail.scrollWidth > rail.clientWidth) rail.scrollLeft += b.left - r.left - (r.width - b.width) / 2;
+    if (b.top < r.top) rail.scrollTop += b.top - r.top - 12;
+    else if (b.bottom > r.bottom) rail.scrollTop += b.bottom - r.bottom + 12;
   }, [pathname]);
 
   const item = (to: string, label: string, sub?: boolean) => (
@@ -84,7 +98,8 @@ function Rail() {
 
 export function Layout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
-  useEffect(() => {
+  // Layout effect: reset scroll before paint, so the new page never flashes at the old scroll position.
+  useLayoutEffect(() => {
     window.scrollTo(0, 0);
   }, [pathname]);
   return (
