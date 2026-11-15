@@ -42,7 +42,16 @@ collect.{$DOMAIN} {
 
 app.{$DOMAIN} {
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
-	reverse_proxy app:3000
+
+	# App API (sign-in, tenants). Same origin as the dashboard, so the session cookie is host-only and there is
+	# no CORS. Caddy replaces any client X-Forwarded-For with the real address (CLIENT_IP_HEADER in the API).
+	handle /api/* {
+		reverse_proxy api:8081
+	}
+
+	handle {
+		reverse_proxy app:3000
+	}
 }
 
 {$DOMAIN} {

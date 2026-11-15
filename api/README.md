@@ -88,7 +88,7 @@ server {
 }
 ```
 
-Caddy (`deploy/Caddyfile`): replace the `handle /api/*` placeholder in the `app.{$DOMAIN}` block with `reverse_proxy 127.0.0.1:8081`.
+Production uses Caddy instead: `infra/caddy/Caddyfile` sends `app.<domain>/api/*` to the `api` service and the rest to the static dashboard. `api/Dockerfile` builds the image; `infra/docker-compose.yml` runs `api-migrate` (migrations as the superuser, once per deploy) and then `api` (as `app_rw`). See `infra/README.md`.
 
 ## Not done yet
 

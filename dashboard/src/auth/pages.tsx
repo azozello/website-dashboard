@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { authClient, errorText, safeNext } from './client';
+import { authClient, errorText, safeNext, useAuthSession } from './client';
 import { AuthCard, Divider, ErrorLine, Field, GoogleIcon, useGoogleEnabled } from './ui';
 
 const withNext = (path: string, next: string) => (next === '/' ? path : `${path}?next=${encodeURIComponent(next)}`);
@@ -43,7 +43,7 @@ export function Login() {
   const [params] = useSearchParams();
   const next = safeNext(params.get('next'));
   const navigate = useNavigate();
-  const { data: session } = authClient.useSession();
+  const { session } = useAuthSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(params.get('error') ? 'Google sign-in did not complete. Try again.' : '');
@@ -375,7 +375,7 @@ interface InvitationView {
 export function Invite() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
-  const { data: session, isPending } = authClient.useSession();
+  const { session, isPending } = useAuthSession();
   const [inv, setInv] = useState<InvitationView | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);

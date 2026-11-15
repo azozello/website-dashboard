@@ -9,6 +9,16 @@ export const authClient = createAuthClient({
   plugins: [organizationClient(), twoFactorClient()],
 });
 
+/**
+ * authClient.useSession, but only a well-formed session counts as signed in. If /api is misrouted (e.g. a static
+ * server answering index.html) the client can hand back a string; treat anything without a user id as signed out.
+ */
+export function useAuthSession() {
+  const { data, isPending } = authClient.useSession();
+  const session = data && typeof data === 'object' && typeof data.user?.id === 'string' ? data : null;
+  return { session, isPending };
+}
+
 export type Role = 'owner' | 'admin' | 'member';
 
 export interface Me {

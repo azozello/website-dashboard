@@ -25,6 +25,13 @@
 		respond `{"ok": true, "version": "{$APP_VERSION:dev}"}` 200
 	}
 
+	# The edge Caddy sends /api/* to the api service. If a request still lands here, answer JSON, never the SPA's
+	# index.html (which the dashboard would misread as an API response).
+	handle /api/* {
+		header Content-Type application/json
+		respond `{"error": "api_unavailable"}` 503
+	}
+
 	handle {
 		root * /srv
 		try_files {path} /index.html
