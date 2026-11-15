@@ -1,12 +1,14 @@
 import { useEffect } from 'react';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { ConnectWordPress } from './auth/Connect';
 import { Onboarding } from './auth/Onboarding';
 import { CheckEmail, ForgotPassword, Invite, Login, ResetPassword, Signup, TwoFactor } from './auth/pages';
 import { Home, RequireAuth, rememberSite, useMe } from './auth/session';
 import { Members, Security } from './auth/Settings';
 import { Layout } from './components/Layout';
-import { BY_SLUG } from './mock/data';
+import { BY_SLUG, hasData } from './data/model';
 import { sitePath, useSiteId } from './site';
+import { NoData } from './views/NoData';
 import { Overview } from './views/Overview';
 import { PageDetail } from './views/PageDetail';
 import { SetupChecklist } from './views/SetupChecklist';
@@ -35,18 +37,26 @@ function SiteRoutes() {
   return (
     <Layout>
       <Routes>
-        <Route index element={<Overview />} />
-        <Route path="pages/:slug" element={<PageRoute />} />
-        <Route path="search-terms" element={<SearchTerms />} />
-        <Route path="sources" element={<Sources />} />
-        <Route path="devices" element={<Devices />} />
-        <Route path="contact-options" element={<ContactOptions />} />
-        <Route path="click-paths" element={<ClickPaths />} />
-        <Route path="changes" element={<Changes />} />
-        <Route path="requests" element={<Requests />} />
+        {/* Configuration, not report data: available before any data arrives. */}
         <Route path="setup" element={<SetupChecklist />} />
         <Route path="settings/*" element={<SiteSettings />} />
-        <Route path="*" element={<Navigate to={sitePath(siteId, '/')} replace />} />
+        {hasData() ? (
+          <>
+            <Route index element={<Overview />} />
+            <Route path="pages/:slug" element={<PageRoute />} />
+            <Route path="search-terms" element={<SearchTerms />} />
+            <Route path="sources" element={<Sources />} />
+            <Route path="devices" element={<Devices />} />
+            <Route path="contact-options" element={<ContactOptions />} />
+            <Route path="click-paths" element={<ClickPaths />} />
+            <Route path="changes" element={<Changes />} />
+            <Route path="requests" element={<Requests />} />
+            <Route path="*" element={<Navigate to={sitePath(siteId, '/')} replace />} />
+          </>
+        ) : (
+          // No data API yet: every report view shows the setup screen instead of running on empty data.
+          <Route path="*" element={<NoData />} />
+        )}
       </Routes>
     </Layout>
   );
@@ -68,6 +78,7 @@ export function App() {
       <Route element={<RequireAuth />}>
         <Route path="/" element={<Home />} />
         <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/connect/wordpress" element={<ConnectWordPress />} />
         <Route path="/settings/security" element={<Security />} />
         <Route path="/orgs/:orgId/members" element={<Members />} />
         <Route path="/s/:siteId/*" element={<SiteRoutes />} />

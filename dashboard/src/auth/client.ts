@@ -24,7 +24,7 @@ export type Role = 'owner' | 'admin' | 'member';
 export interface Me {
   user: { userId: string; email: string; name: string; twoFactorEnabled: boolean; signInMethods: string[] };
   orgs: { id: string; name: string; slug: string; role: Role }[];
-  sites: { id: string; name: string; platform: 'php' | 'wordpress' | 'wix'; orgId: string; orgName: string; role: Role }[];
+  sites: { id: string; name: string; platform: 'php' | 'wordpress' | 'wix'; orgId: string; orgName: string; role: Role; origins: string[] }[];
 }
 
 export class ApiError extends Error {

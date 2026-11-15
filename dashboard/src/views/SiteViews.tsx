@@ -4,7 +4,7 @@ import { DataTable } from '../components/DataTable';
 import { Bar, Dx, Head, Muted, PageLink, Panel, VRows } from '../components/ui';
 import { allStats, baseK, rangeName, type Range } from '../lib/analysis';
 import { fi, fp, fp0, mmss } from '../lib/format';
-import { BOOK, CHANGES, INQUIRIES, PAGES, type Page, type Tone } from '../mock/data';
+import { BOOK, CHANGES, INQUIRIES, PAGES, type Page, type Tone } from '../data/model';
 import { useDashboard } from '../state';
 import { ChangesTable, InquiryTable } from './shared';
 

@@ -9,10 +9,11 @@ Part of W2 in `specs/Data-Contract-v1.md`. The plugin:
 | | |
 | --- | --- |
 | Slug / text domain | `rate1-connector` |
-| Version | 0.1.0 |
+| Version | 0.2.0 |
 | Requires | WordPress 6.3+ (script `strategy`), PHP 7.4+ |
 | Tested with | WordPress 7.1.4, PHP 8.3 (FPM), Contact Form 7 6.2.5, Autoptimize 3.1.17, LiteSpeed Cache 7.9.3 |
 | Collector | `RATE1_CONNECTOR_COLLECT_URL`, default `https://collect.bazed.live`. Override it in `wp-config.php` only for tests. |
+| Dashboard | `RATE1_CONNECTOR_APP_URL`, default `https://app.bazed.live` (only for "Connect to Rate 1"). Override it in `wp-config.php` only for tests. |
 
 ## Layout
 
@@ -40,7 +41,7 @@ wp-plugin/
 cd wp-plugin
 composer install            # phpcs + WordPress Coding Standards + PHPCompatibilityWP
 vendor/bin/phpcs            # must be clean
-php build.php               # -> dist/rate1-connector-0.1.0.zip (dist/ is gitignored)
+php build.php               # -> dist/rate1-connector-0.2.0.zip (dist/ is gitignored)
 ```
 
 The build checks that the `Version` header, `RATE1_CONNECTOR_VERSION` and the readme's `Stable tag` match. It zips only `rate1-connector/`, so no dev files go in.
@@ -87,7 +88,8 @@ Results are written to `tests/integration-results.json` and `tests/plugin-check-
 | `Rate1_Connector_Sender` | `shutdown` (`PHP_INT_MAX-10`), cron `rate1_connector_process_queue` | Payloads are collected during the request. At shutdown it calls `fastcgi_finish_request()` / `litespeed_finish_request()`, then `wp_remote_post(…/v1/r)` with a 3 s timeout and `Authorization: Bearer sk_…`. 200 and 202 count as success. Transport errors, 3xx, 408, 429 and 5xx are retried. Other 4xx are permanent and counted as dropped. Without a finish function nothing is sent during the visitor's request: the payload is queued as due now, a single cron event is scheduled and `spawn_cron()` is called. Queue: option `rate1_connector_queue` (autoload off), items `{payload, attempts, next_at}`, retries after 60 s / 300 s / 900 s with the same body and rid, then dropped and counted (`rate1_connector_dropped`). At most 200 items, 20 sends per cron run. Filter `rate1_connector_finish_request` (bool) turns off the early finish. Nothing about payload contents is logged. |
 | `Rate1_Connector_Hello` | `activated_plugin`, settings save, daily cron `rate1_connector_hello` | Builds the §8 body. `head_hook_ok` comes from a server-side GET of `home_url('/')` with no cookies, looking for a `<script>` tag with `/v1/r1.js` and `data-site="<key>"`. Optional extra field `head_hook_error`: `no_site_key`, `request_failed`, `http_<code>` or `tag_missing`. The outcome is stored in `rate1_connector_last_hello`. |
 | `Rate1_Connector_Compat` | see next section | Cache plugin exclusions; the `cache` and `consent` arrays of the hello. |
-| `Rate1_Connector_Admin` | `admin_menu`, `admin_post_rate1_connector_save` | Settings → Rate 1 has key, secret (password field, always rendered empty; empty input keeps the stored secret; "remove" checkbox), the internal-traffic switch and a disabled "Connect to Rate 1" button (placeholder for the §8 handoff). The status table shows last hello, homepage tag check, last `/v1/r` status, queue size, dropped count and collector. Saving goes through `admin-post.php` with a nonce and `manage_options`, and sends a hello. |
+| `Rate1_Connector_Admin` | `admin_menu`, `admin_post_rate1_connector_save` | Settings → Rate 1 has key, secret (password field, always rendered empty; empty input keeps the stored secret; "remove" checkbox), the internal-traffic switch and the "Connect to Rate 1" button (see `Rate1_Connector_Connect`). The status table shows last hello, homepage tag check, last `/v1/r` status, queue size, dropped count and collector. Saving goes through `admin-post.php` with a nonce and `manage_options`, and sends a hello. |
+| `Rate1_Connector_Connect` | `admin_post_rate1_connector_connect`, `admin_post_rate1_connector_connected`, `allowed_redirect_hosts` | §8 one-click connect. The button (nonce, `manage_options`) keeps a random state for this user in a 10-minute transient (`rate1_connector_connect_state_<user id>`, stored as SHA-256) and redirects to `<app>/connect/wordpress?home_url=…&return_url=…&state=…`. The dashboard returns to `admin-post.php?action=rate1_connector_connected&code=…&state=…` (or `error=access_denied`). The state must match and is used once (it replaces a nonce on this redirect); then `POST <app>/api/connect/exchange` `{"code"}` returns `{site_key, site_secret}`, stored like the manual fields, and a hello is sent. Outcome on the settings page: `ok`, `cancelled`, `expired`, `failed`, `bad_response`. Connecting rotates the site secret on the Rate 1 side. |
 | `uninstall.php` | | Deletes every `rate1_connector_*` option and clears both cron hooks, on every site of a multisite network. |
 
 Options: `rate1_connector_site_key` (autoload), `rate1_connector_site_secret` (autoload off, created on activation, never printed), `rate1_connector_exclude_editors`, `rate1_connector_queue` (autoload off), `rate1_connector_dropped`, `rate1_connector_last_hello`, `rate1_connector_last_send`.

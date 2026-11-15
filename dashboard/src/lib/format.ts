@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import type { Tone } from '../mock/data';
+import type { Tone } from '../data/model';
 
 /** Integer with thousands separators. */
 export const fi = (n: number) => Math.round(n).toLocaleString('en-US');

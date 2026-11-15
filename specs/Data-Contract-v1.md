@@ -253,8 +253,8 @@ Response: `{"ok": true, "site_id": "…", "config_version": 3}`. Ingest stores t
 **Connect handoff** (the "one-click" install; fallback in the PoC is pasting the keys by hand):
 
 1. The plugin's "Connect" button opens `https://app.<domain>/connect/wordpress?home_url=…&return_url=<wp-admin url>&state=<random>`.
-2. The agency user logs in; the dashboard creates the site (or picks an existing one) and redirects to `return_url?code=<one-time, valid 5 min>&state=…`.
-3. The plugin checks `state` and calls `POST https://app.<domain>/api/connect/exchange` with `{"code": "…"}` → `{"site_key": "pk_…", "site_secret": "sk_…"}`.
+2. The agency user logs in; the dashboard creates the site (or picks an existing one that already allows the `home_url` origin) and redirects to `return_url?code=<one-time, valid 5 min>&state=…`. `return_url` must be on the `home_url` origin (https outside development). Cancelling redirects to `return_url?error=access_denied&state=…`.
+3. The plugin checks `state` and calls `POST https://app.<domain>/api/connect/exchange` with `{"code": "…"}` → `{"site_key": "pk_…", "site_secret": "sk_…"}`. The site secret is new (only its hash is stored), so connecting rotates it. Invalid, used or expired code → `400 {"error": "invalid_code"}`.
 4. The plugin stores the keys and sends a hello.
 
 ---
@@ -368,3 +368,4 @@ The dashboard reads these tables directly in the PoC. Ingest reads only `sites` 
 
 - **1.0** (15 Nov 2026): first proposal.
 - **1.1** (15 Nov 2026, proposed): dashboard sign-in and tenancy. §2: `app_rw` owns the auth tables, new app API variables. §10: `sites.org_id`, auth tables. Ingest unaffected (`org_id` is nullable).
+- **1.2** (15 Nov 2026, proposed): §8 connect details: `return_url` on the `home_url` origin, existing sites must allow it, cancel answer, exchange rotates the site secret, `invalid_code` error.

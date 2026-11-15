@@ -23,6 +23,7 @@ class Rate1_Connector_Plugin {
 		Rate1_Connector_Hello::init();
 		if ( is_admin() ) {
 			Rate1_Connector_Admin::init();
+			Rate1_Connector_Connect::init();
 		}
 		add_action( 'activated_plugin', array( __CLASS__, 'activated' ) );
 		add_action( 'admin_init', array( __CLASS__, 'ensure_schedule' ) );

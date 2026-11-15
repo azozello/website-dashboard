@@ -1,4 +1,4 @@
-import { BOOK, CHANGES, PAGES, SITE, WEEKS, type Page, type Tone, type Week } from '../mock/data';
+import { BOOK, CHANGES, PAGES, SITE, WEEKS, type Page, type Tone, type Week } from '../data/model';
 import { fi, fp, fp0 } from './format';
 
 export type Range = 4 | 13 | 26;

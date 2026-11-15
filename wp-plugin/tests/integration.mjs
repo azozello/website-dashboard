@@ -23,7 +23,7 @@ const repo = path.resolve(pluginRoot, '..');
 const args = new Set(process.argv.slice(2));
 const WP = 'http://localhost:8088';
 const MOCK = 'http://127.0.0.1:4010';
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 
 // Test credentials for this run only (contract §1 formats).
 const b62 = (n) => {
@@ -283,7 +283,7 @@ async function testSettings({ adminCookie, subCookie }) {
   check(!page.text.includes(SECRET), 'site secret never printed into the HTML');
   check(/<input type="password" id="rate1_site_secret" name="rate1_site_secret"[^>]*value=""/.test(page.text), 'secret field rendered empty');
   check(page.text.includes('A secret is saved'), 'shows that a secret is saved');
-  check(/<button[^>]*disabled[^>]*>Connect to Rate 1<\/button>/.test(page.text), 'disabled "Connect" placeholder button');
+  check(/name="action" value="rate1_connector_connect"/.test(page.text) && /name="rate1_connect_nonce" value="[0-9a-f]+"/.test(page.text) && page.text.includes('Reconnect to Rate 1'), '"Connect to Rate 1" form with its own nonce ("Reconnect" once keys are saved)');
   check(page.text.includes('Waiting for retry') && page.text.includes('Dropped after retries') && page.text.includes('Last hello'), 'status table: last hello, queue size, dropped count');
   const nonce = (page.text.match(/name="_wpnonce" value="([0-9a-f]+)"/) || [])[1];
   check(nonce, 'nonce field present');
@@ -318,6 +318,38 @@ async function testSettings({ adminCookie, subCookie }) {
   const r5 = await save({ rate1_site_key: '' }, subCookie);
   check(r5.status === 403 || /not allowed/i.test(r5.text), 'subscriber cannot save', r5.status);
   eq(opt('rate1_connector_site_key'), KEY, 'key unchanged by rejected requests');
+
+  section('Connect to Rate 1: start and return (§8)');
+  const connectNonce = (page.text.match(/name="rate1_connect_nonce" value="([0-9a-f]+)"/) || [])[1];
+  const connect = (cookie = adminCookie) =>
+    http(`${WP}/wp-admin/admin-post.php`, {
+      method: 'POST',
+      headers: { Cookie: cookie, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ action: 'rate1_connector_connect', rate1_connect_nonce: connectNonce, _wp_http_referer: '/wp-admin/options-general.php?page=rate1-connector' }).toString(),
+    });
+  const back = (query) => http(`${WP}/wp-admin/admin-post.php?action=rate1_connector_connected&${query}`, { headers: { Cookie: adminCookie } });
+  const outcome = (r) => new URL(r.headers.get('location') || 'http://x/').searchParams.get('rate1_connect');
+
+  const go = await connect();
+  eq(go.status, 302, 'Connect redirects');
+  const to = new URL(go.headers.get('location') || 'http://x/');
+  eq(to.origin + to.pathname, 'https://app.bazed.live/connect/wordpress', 'to the dashboard connect page');
+  eq(to.searchParams.get('home_url'), WP, 'with home_url');
+  eq(to.searchParams.get('return_url'), `${WP}/wp-admin/admin-post.php?action=rate1_connector_connected`, 'with return_url');
+  const state = to.searchParams.get('state') || '';
+  check(/^[A-Za-z0-9]{32}$/.test(state), 'with a random 32-character state', state);
+
+  eq(outcome(await back('state=wrong&code=' + 'C'.repeat(43))), 'expired', 'wrong state → expired (no exchange)');
+  eq(outcome(await back(`state=${state}&code=` + 'C'.repeat(43))), 'expired', 'state is single-use: the wrong attempt used it up');
+
+  const go2 = new URL((await connect()).headers.get('location') || 'http://x/');
+  eq(outcome(await back(`state=${go2.searchParams.get('state')}&error=access_denied`)), 'cancelled', 'cancelled in the dashboard → cancelled');
+  eq(opt('rate1_connector_site_key'), KEY, 'keys unchanged by cancelled and expired attempts');
+  const shown = await http(`${WP}/wp-admin/options-general.php?page=rate1-connector&rate1_connect=cancelled`, { headers: { Cookie: adminCookie } });
+  check(shown.text.includes('Connecting was cancelled'), 'settings page shows the outcome');
+
+  const sub = await connect(subCookie);
+  check(sub.status === 403 || /not allowed|link you followed has expired/i.test(sub.text), 'subscriber cannot start Connect', sub.status);
 }
 
 async function testCf7() {

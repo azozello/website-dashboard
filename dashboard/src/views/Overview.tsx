@@ -6,7 +6,7 @@ import { TrendChart } from '../components/TrendChart';
 import { Bar, Change, ChangesLine, Dx, Head, Panel, pagePath } from '../components/ui';
 import { allStats, flagsFor, rangeName, type Diagnosis } from '../lib/analysis';
 import { fi, fp, fp0, mmss } from '../lib/format';
-import type { Page } from '../mock/data';
+import type { Page } from '../data/model';
 import { useDashboard } from '../state';
 
 interface Row {

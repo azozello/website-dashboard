@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState, type MouseEvent, type TouchEvent } f
 import type { Flag } from '../lib/analysis';
 import { cssVars } from '../lib/format';
 import { METRICS } from '../lib/metrics';
-import type { Week } from '../mock/data';
+import type { Week } from '../data/model';
 import type { ShowState } from '../state';
 
 interface Props {
@@ -88,8 +88,20 @@ export function TrendChart({ cur, show, flags }: Props) {
           <span title={f.title}>{f.num}</span>
         </div>
       ))}
-      {ticks.map((j) => (
-        <span key={j} className={'xl' + (X(j) === 0 ? ' first' : X(j) === 1000 ? ' last' : '')} style={{ left: (X(j) / 10).toFixed(2) + '%' }}>
+      {ticks.map((j, i) => (
+        <span
+          key={j}
+          className={[
+            'xl',
+            X(j) === 0 && 'first',
+            X(j) === 1000 && 'last',
+            // phones only fit every other label; the first and last always stay
+            ticks.length > 5 && i % 2 === 1 && i !== ticks.length - 1 && 'minor',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          style={{ left: (X(j) / 10).toFixed(2) + '%' }}
+        >
           {cur[j].label}
         </span>
       ))}

@@ -4,7 +4,7 @@ Tags: analytics, conversion rate, contact form 7, elementor, privacy
 Requires at least: 6.3
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.1.0
+Stable tag: 0.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -23,13 +23,15 @@ No cookies, no local storage, no IP addresses, no user agents, no form field val
 
 == External services ==
 
-This plugin connects to the Rate 1 collector at `https://collect.bazed.live`, operated by Rate 1. It is needed to measure your site's conversion rates in your Rate 1 dashboard.
+This plugin connects to the Rate 1 collector at `https://collect.bazed.live` and, only when you click "Connect to Rate 1", to the Rate 1 dashboard at `https://app.bazed.live`, both operated by Rate 1. They are needed to measure your site's conversion rates in your Rate 1 dashboard.
 
 * **Tracking script.** Every front-end page loads `https://collect.bazed.live/v1/r1.js` in the visitor's browser. The script reports page views, engagement (active time, scroll depth, sections seen) and clicks on call, WhatsApp, email and booking buttons. It sets no cookies and uses no device storage. The collector sees the visitor's IP address and user agent as part of the HTTP request; it uses them only to compute a daily-changing pseudonymous visitor key and never stores them.
 * **Form requests.** When a supported form plugin accepts a submission, your server sends `POST https://collect.bazed.live/v1/r` with: the form plugin, the form id, the page path, a random page token, the spam verdict, a timestamp and a random request id. No field values, names, email addresses, phone numbers, IP addresses or user agents are sent.
 * **Status report ("hello").** On activation, when you save the settings and once a day, your server sends `POST https://collect.bazed.live/v1/plugin/hello` with: plugin, WordPress and PHP versions, your site address, the active theme, whether the tag was found on your homepage, the names and ids of your forms, and which caching and consent plugins are active.
 
-Server-to-server requests are authenticated with your site secret. Nothing is sent until you enter a site key (tag) or site secret (form requests and status report).
+* **Connect (optional).** When an administrator clicks "Connect to Rate 1", their browser opens the Rate 1 dashboard at `https://app.bazed.live/connect/wordpress` with your site address, the address to return to in your WordPress admin and a random one-time value. After they confirm there, your server sends `POST https://app.bazed.live/api/connect/exchange` with the one-time code it got back and receives the site key and site secret. Nothing else is sent.
+
+Server-to-server requests are authenticated with your site secret. Nothing is sent until you connect or enter a site key (tag) or site secret (form requests and status report).
 
 Terms of service and privacy policy: to be published before the first public release (PoC build).
 
@@ -37,7 +39,8 @@ Terms of service and privacy policy: to be published before the first public rel
 
 1. Upload the plugin and activate it.
 2. Go to Settings → Rate 1.
-3. Paste the site key (`pk_…`) and site secret (`sk_…`) from your Rate 1 dashboard and click "Save and check connection".
+3. Click "Connect to Rate 1", sign in to your Rate 1 dashboard and choose the website. You come back here connected.
+   Or paste the site key (`pk_…`) and site secret (`sk_…`) from your Rate 1 dashboard and click "Save and check connection".
 
 If you use a page cache, clear it after saving so the tag appears on cached pages.
 
@@ -60,6 +63,9 @@ No. The request to Rate 1 is sent after the visitor's response has been delivere
 Submissions that the form plugin marks as spam are reported with a spam flag and are not counted as requests. Contact Form 7 and Gravity Forms expose their spam verdicts. Elementor Pro and WPForms reject spam before a submission is recorded, so the plugin never sees it.
 
 == Changelog ==
+
+= 0.2.0 =
+* "Connect to Rate 1": one click instead of copying the site key and secret (Data contract v1 §8).
 
 = 0.1.0 =
 * First release: tracking tag, Contact Form 7, Elementor Pro, WPForms and Gravity Forms requests with retry queue, caching plugin exclusions, status report.
