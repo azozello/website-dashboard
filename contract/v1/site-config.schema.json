@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://collect.bazed.live/contract/v1/site-config.schema.json",
+  "title": "GET /v1/config/{site_key} response (Data contract v1 §5)",
+  "type": "object",
+  "required": ["v", "config_version", "spa", "sections", "booking_paths", "forms_browser"],
+  "properties": {
+    "v": { "const": 1 },
+    "config_version": { "type": "integer", "minimum": 0 },
+    "spa": { "type": "string" },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["selector", "name"],
+        "properties": {
+          "path": { "type": "string" },
+          "selector": { "type": "string" },
+          "name": { "type": "string" }
+        }
+      }
+    },
+    "booking_paths": { "type": "array", "items": { "type": "string" } },
+    "forms_browser": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["form", "selector", "success_selector"],
+        "properties": {
+          "form": { "type": "string" },
+          "selector": { "type": "string" },
+          "success_selector": { "type": "string" }
+        }
+      }
+    }
+  }
+}

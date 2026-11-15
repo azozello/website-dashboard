@@ -1,0 +1,38 @@
+{
+  "endpoint": "POST /v1/e",
+  "valid": [
+    {
+      "name": "contract example: pageview, click, final engage",
+      "body": {"v": 1, "k": "pk_3fK9sQ2LmV7xYp1aB8cD4eFg", "wd": false, "test": false, "ev": [
+        {"type": "pageview", "eid": "a1B2c3D4", "pv": "Qm7Xk2Lp9Rt4Vb8N", "path": "/back-pain", "ts": 1794758400000, "nav": "load", "ref": "www.google.com", "utm": {}, "clid": [], "title": "Back pain treatment", "vw": 390, "load_ms": 1840},
+        {"type": "click", "eid": "e5F6g7H8", "pv": "Qm7Xk2Lp9Rt4Vb8N", "path": "/back-pain", "ts": 1794758431000, "kind": "call", "label": "Call us"},
+        {"type": "engage", "eid": "i9J0k1L2", "pv": "Qm7Xk2Lp9Rt4Vb8N", "path": "/back-pain", "ts": 1794758460000, "active_ms": 52000, "scroll": 68, "sections": ["headline", "prices"], "final": true}
+      ]}
+    },
+    {
+      "name": "spa pageview with utm and click ids, test mode",
+      "body": {"v": 1, "k": "pk_3fK9sQ2LmV7xYp1aB8cD4eFg", "wd": false, "test": true, "ev": [
+        {"type": "pageview", "eid": "Zz9Yy8Xx", "pv": "AbCdEfGhIjKlMnOp", "path": "/preise", "ts": 1794758500000, "nav": "spa", "ref": null, "utm": {"source": "google", "medium": "cpc", "campaign": "herbst"}, "clid": ["gclid"], "title": "Preise", "vw": 1280, "load_ms": null}
+      ]}
+    },
+    {
+      "name": "steps, form_ok, booking click without label",
+      "body": {"v": 1, "k": "pk_3fK9sQ2LmV7xYp1aB8cD4eFg", "wd": false, "test": false, "ev": [
+        {"type": "step", "eid": "s1s1s1s1", "pv": "AbCdEfGhIjKlMnOp", "path": "/termin", "ts": 1794758510000, "flow": "booking", "flow_id": "online", "step": 1, "name": "Zeit wählen"},
+        {"type": "step", "eid": "s2s2s2s2", "pv": "AbCdEfGhIjKlMnOp", "path": "/termin", "ts": 1794758520000, "flow": "calculator", "flow_id": "preisrechner", "step": 20},
+        {"type": "click", "eid": "c1c1c1c1", "pv": "AbCdEfGhIjKlMnOp", "path": "/termin", "ts": 1794758530000, "kind": "booking_cta"},
+        {"type": "form_ok", "eid": "f1f1f1f1", "pv": "AbCdEfGhIjKlMnOp", "path": "/termin", "ts": 1794758540000, "form": "contact"}
+      ]}
+    }
+  ],
+  "invalid": [
+    {"name": "wrong version", "field": "v", "body": {"v": 2, "k": "pk_3fK9sQ2LmV7xYp1aB8cD4eFg", "wd": false, "test": false, "ev": [{"type": "form_ok", "eid": "f1f1f1f1", "pv": "AbCdEfGhIjKlMnOp", "path": "/", "ts": 1, "form": "x"}]}},
+    {"name": "malformed site key", "field": "k", "body": {"v": 1, "k": "pk_short", "wd": false, "test": false, "ev": [{"type": "form_ok", "eid": "f1f1f1f1", "pv": "AbCdEfGhIjKlMnOp", "path": "/", "ts": 1, "form": "x"}]}},
+    {"name": "no events", "field": "ev", "body": {"v": 1, "k": "pk_3fK9sQ2LmV7xYp1aB8cD4eFg", "wd": false, "test": false, "ev": []}},
+    {"name": "missing wd", "field": "wd", "body": {"v": 1, "k": "pk_3fK9sQ2LmV7xYp1aB8cD4eFg", "test": false, "ev": [{"type": "form_ok", "eid": "f1f1f1f1", "pv": "AbCdEfGhIjKlMnOp", "path": "/", "ts": 1, "form": "x"}]}},
+    {"name": "pv too short", "field": "ev[0].pv", "body": {"v": 1, "k": "pk_3fK9sQ2LmV7xYp1aB8cD4eFg", "wd": false, "test": false, "ev": [{"type": "click", "eid": "c1c1c1c1", "pv": "short", "path": "/", "ts": 1, "kind": "call"}]}},
+    {"name": "unknown click kind", "field": "ev[0].kind", "body": {"v": 1, "k": "pk_3fK9sQ2LmV7xYp1aB8cD4eFg", "wd": false, "test": false, "ev": [{"type": "click", "eid": "c1c1c1c1", "pv": "AbCdEfGhIjKlMnOp", "path": "/", "ts": 1, "kind": "fax"}]}},
+    {"name": "step out of range", "field": "ev[0].step", "body": {"v": 1, "k": "pk_3fK9sQ2LmV7xYp1aB8cD4eFg", "wd": false, "test": false, "ev": [{"type": "step", "eid": "s1s1s1s1", "pv": "AbCdEfGhIjKlMnOp", "path": "/", "ts": 1, "flow": "booking", "flow_id": "x", "step": 21}]}},
+    {"name": "path not normalised", "field": "ev[0].path", "body": {"v": 1, "k": "pk_3fK9sQ2LmV7xYp1aB8cD4eFg", "wd": false, "test": false, "ev": [{"type": "form_ok", "eid": "f1f1f1f1", "pv": "AbCdEfGhIjKlMnOp", "path": "https://site.example/x", "ts": 1, "form": "x"}]}}
+  ]
+}

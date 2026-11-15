@@ -1,0 +1,7 @@
+{
+  "endpoint": "GET /v1/config/{site_key}",
+  "valid": [
+    {"name": "contract example", "body": {"v": 1, "config_version": 3, "spa": "auto", "sections": [{"path": "/back-pain", "selector": "#prices", "name": "prices"}], "booking_paths": ["/booking"], "forms_browser": [{"form": "contact", "selector": "form", "success_selector": ".form-success"}]}},
+    {"name": "new site defaults", "body": {"v": 1, "config_version": 0, "spa": "auto", "sections": [], "booking_paths": [], "forms_browser": []}}
+  ]
+}

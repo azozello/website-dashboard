@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://collect.bazed.live/contract/v1/server-request.schema.json",
+  "title": "POST /v1/r body (Data contract v1 §6)",
+  "description": "Strict sender-side schema. Any extra key (for example a form field value) fails validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "rid", "ts", "pv", "path", "channel", "source", "form_id", "spam", "spam_reason"],
+  "properties": {
+    "v": { "const": 1 },
+    "rid": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "ts": { "$ref": "common.schema.json#/$defs/ts" },
+    "pv": { "oneOf": [{ "$ref": "common.schema.json#/$defs/pv" }, { "type": "null" }] },
+    "path": { "oneOf": [{ "$ref": "common.schema.json#/$defs/path" }, { "type": "null" }] },
+    "channel": { "enum": ["form", "booking", "calculator"] },
+    "source": { "enum": ["cf7", "elementor", "wpforms", "gravity", "custom"] },
+    "form_id": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "spam": { "type": "boolean" },
+    "spam_reason": { "enum": ["honeypot", "plugin", "too_fast", null] }
+  }
+}

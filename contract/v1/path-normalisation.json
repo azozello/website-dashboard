@@ -1,0 +1,29 @@
+{
+  "description": "Shared test vectors for the §1 path rule: [input, expected]. r1.js, ingest, the WordPress plugin, the PHP helper and the Search Console import must all pass these. If any percent-escape is malformed (not %XX) or the decoded bytes are not valid UTF-8, the path stays undecoded. All trailing slashes are removed except for '/'.",
+  "cases": [
+    ["https://site.example/Back-Pain/?utm_source=x#top", "/Back-Pain"],
+    ["https://site.example/", "/"],
+    ["https://site.example", "/"],
+    ["http://site.example:8080/x/?y", "/x"],
+    ["https://site.example/Preise/Physio/?gclid=abc", "/Preise/Physio"],
+    ["/", "/"],
+    ["", "/"],
+    ["/back-pain", "/back-pain"],
+    ["/back-pain/", "/back-pain"],
+    ["/Back-Pain///", "/Back-Pain"],
+    ["/a/b/?x=1", "/a/b"],
+    ["/a#frag", "/a"],
+    ["/a?x=1#frag", "/a"],
+    ["/%C3%BCber-uns/", "/über-uns"],
+    ["/caf%C3%A9", "/café"],
+    ["/100%25", "/100%"],
+    ["/a%20b", "/a b"],
+    ["/bad%E0%A4%A", "/bad%E0%A4%A"],
+    ["/a%20b%", "/a%20b%"],
+    ["/50%off/", "/50%off"],
+    ["/x%FF", "/x%FF"],
+    ["back-pain", "/back-pain"],
+    ["?only=query", "/"],
+    ["#only-fragment", "/"]
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "endpoint": "POST /v1/w/{webhook_token}",
+  "valid": [
+    {"name": "custom structure", "body": {"form": "Kontakt", "submission_id": "9b2f7c1e-4d3a-4f5b-8c6d-7e8f9a0b1c2d"}, "stored": {"form": "Kontakt", "submission_id": "9b2f7c1e-4d3a-4f5b-8c6d-7e8f9a0b1c2d"}},
+    {"name": "no submission id", "body": {"form": "Kontakt"}, "stored": {"form": "Kontakt", "submission_id": null}}
+  ],
+  "invalid": [
+    {"name": "no form name", "field": "form", "body": {"submission_id": "abc"}}
+  ],
+  "sender_violations": [
+    {"name": "'all keys and values' (everything but form and submission_id is discarded unread)", "body": {"form": "Kontakt", "submission_id": "abc", "field:email": "max@example.com", "field:phone": "+49 170 1234567", "field:message": "Rückenschmerzen seit drei Wochen"}, "stored": {"form": "Kontakt", "submission_id": "abc"}}
+  ]
+}

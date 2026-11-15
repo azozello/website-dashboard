@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Consent | Physio Praxis</title>
+  <script defer src="{{COLLECT}}/v1/r1.js" data-site="{{KEY_CONSENT}}" data-consent="required"></script>
+</head>
+<body>
+  <a id="call" href="tel:+4930123456" onclick="event.preventDefault()">Anrufen</a>
+  <button id="accept" onclick="window.r1 && r1.consent(true)">Alle akzeptieren</button>
+</body>
+</html>
