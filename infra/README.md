@@ -27,7 +27,8 @@ Internet ──► Hetzner Cloud Firewall (in: 80, 443 from anywhere; 22 from ad
 | `postgres/initdb/10-roles.sh` | Creates `ingest_rw` and `app_rw` on first start of an empty volume |
 | `.env.example` | Variables of `/opt/rate1/.env` (the real file exists only on the server) |
 | `deploy/rate1-deploy` | Installed at `/usr/local/bin/rate1-deploy`; checks out a ref and runs `deploy/deploy.sh` |
-| `deploy/deploy.sh` | `docker compose pull && up -d --wait`, then `caddy reload` |
+| `deploy/deploy.sh` | `docker compose pull && build && up -d --wait`, then `caddy reload` |
+| `../ingest/Dockerfile`, `../dashboard/Dockerfile` | The `ingest` and `app` images, built on the server from the deployed commit |
 | `backup/pg-backup.sh`, `backup/pg-restore.sh` | Nightly `pg_dump` (7 days kept) and restore |
 | `../.github/workflows/deploy.yml` | CI/CD: deploys `main` on every merge |
 
@@ -92,17 +93,18 @@ by hand from the Actions tab (workflow_dispatch). A deploy can be started from y
 ssh ops@<ip> sudo -u deploy -H rate1-deploy main      # or a branch / commit sha
 ```
 
-## Deploy a new app image
+## App images
 
-The ingest (W3) and dashboard (W4) services are placeholders (`traefik/whoami`) until real images exist. Images must
-be `linux/amd64` (CX23 is x86) and listen on 8080 (ingest) and 3000 (app).
+There is no registry: `deploy.sh` builds `rate1-ingest` (`ingest/Dockerfile`: ingest + `r1.js` from `tracker/`) and
+`rate1-app` (`dashboard/Dockerfile`: the dashboard's static build behind Caddy) on the server from the checked-out
+commit, with the repository root as build context. They listen on 8080 (ingest) and 3000 (app) and answer
+`GET /healthz` with `{"ok": true, "version": "<deployed short sha>"}`, so `curl https://collect.bazed.live/healthz`
+shows which commit is live.
 
-1. Publish the image, e.g. `ghcr.io/<owner>/rate1-ingest:<tag>` (public, or run `docker login ghcr.io` once on the server as `deploy`).
-2. Pin it in `docker-compose.yml` (`image: ${INGEST_IMAGE:-ghcr.io/...:<tag>}`) and remove the `WHOAMI_*` lines, then
-   merge to `main`. CI deploys it.
-   Quick override without a commit: set `INGEST_IMAGE=` / `APP_IMAGE=` in `/opt/rate1/.env` and run
-   `sudo -u deploy -H rate1-deploy main`.
-3. Roll back: revert the commit and merge, or deploy an older sha: `sudo -u deploy -H rate1-deploy <sha>`.
+1. Change the code, merge to `main`. CI deploys it (build ≈ 2–4 min on the CX23).
+2. Roll back: revert the commit and merge, or deploy an older sha: `sudo -u deploy -H rate1-deploy <sha>`.
+3. Site admin (create a site, set origins/config): `docker exec rate1-ingest-1 node dist/cli.js create-site ...`
+   (commands in `ingest/README.md`).
 
 ## Update
 
@@ -205,7 +207,8 @@ D=bazed.live; IP=<server ipv4>
 dig +short A collect.$D; dig +short AAAA collect.$D; dig +short A app.$D; dig +short AAAA app.$D
 curl -sI http://collect.$D/ | head -3                       # 308 to https
 curl -sv https://app.$D/healthz 2>&1 | grep -E 'subject:|issuer:|expire|HTTP/|strict-transport'
-curl -s https://collect.$D/ | grep -i x-forwarded-for         # must equal: curl -4 https://api.ipify.org
+curl -s https://collect.$D/healthz; curl -s https://app.$D/healthz   # {"ok":true,"version":"<deployed sha>"}
+curl -s https://collect.$D/v1/_echo                           # ENV=test only: ip_seen must equal curl -4 https://api.ipify.org
 curl -sI https://collect.$D/ | grep -ci set-cookie            # 0
 head -c 17000 /dev/zero | curl -s -o /dev/null -w '%{http_code}\n' -X POST --data-binary @- https://collect.$D/v1/e   # 413
 nc -vz -w 3 $IP 5432                                           # refused / timeout
@@ -214,7 +217,7 @@ ssh ops@$IP 'docker logs rate1-caddy-1 2>&1 | grep -c <your ip>'   # 0
 
 ## Known gaps vs Data Contract §2
 
-- **Rate limits** (`/v1/e` 120/min per IP, others 60/min) are not enforced: stock Caddy has no rate limiter. Options:
-  a Caddy build with the `caddy-ratelimit` module, or enforce them in the ingest service. Not done; needs a decision.
-- **`/healthz` on both hosts**: answered by the placeholders today; the real services must implement it.
+- **Rate limits** (`/v1/e` 120/min per IP, others 60/min) are enforced in the ingest process (in memory, one
+  process), not at the proxy: stock Caddy has no rate limiter.
+- **Dashboard** is a static build with mocked data and no login yet; authentication is in progress separately.
 - **`ENV=test`** is set for the PoC (enables `/v1/_echo` in the real ingest). Switch to `prod` in `.env` later.
