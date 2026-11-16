@@ -10,8 +10,8 @@
 | `wp-plugin/` | WordPress plugin `rate1-connector` | §6, §8 |
 | `integrations/php/` | One-file helper for custom PHP form handlers | §6 |
 | `integrations/wix/` | Wix install guide (non-developers) | §3, §7 |
-| `dashboard/` | React dashboard on `app.<domain>`: sign-in, organisations, sites, WordPress connect; no site data yet | §8, §10–§12 |
-| `api/` | Dashboard API on `app.<domain>/api` (Node, Fastify, Better Auth): sign-in with MFA, tenants, sites, WordPress connect | §8, §10 |
+| `dashboard/` | React dashboard on `app.<domain>`: sign-in, organisations, sites, WordPress connect, report views on the tracked data | §8, §10–§12 |
+| `api/` | Dashboard API on `app.<domain>/api` (Node, Fastify, Better Auth): sign-in with MFA, tenants, sites, WordPress connect, report data | §8, §10, §11 |
 | `infra/` | Hetzner server (Terraform), Docker Compose (Caddy, ingest, app, Postgres), deploy-on-merge CI, backups | §2 |
 
 Test results: [TESTING.md](TESTING.md).

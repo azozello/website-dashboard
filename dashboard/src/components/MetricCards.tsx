@@ -1,7 +1,6 @@
-import type { Totals } from '../lib/analysis';
+import { rangeText, type Totals } from '../lib/analysis';
 import { cssVars } from '../lib/format';
 import { METRICS, type MetricKey } from '../lib/metrics';
-import { PAGES } from '../data/model';
 import type { ShowState } from '../state';
 import { Change } from './ui';
 
@@ -12,10 +11,12 @@ interface Props {
   onToggle: (k: MetricKey) => void;
   /** On a page view, show the site average instead of the metric description. */
   siteT?: Totals;
+  /** Pages the site average is spread over. */
+  pageCount?: number;
 }
 
 /** The six metric cards; each one toggles its line on the chart below. */
-export function MetricCards({ T, P, show, onToggle, siteT }: Props) {
+export function MetricCards({ T, P, show, onToggle, siteT, pageCount = 1 }: Props) {
   return (
     <div className="cards" role="group" aria-label="Show numbers on the chart">
       {METRICS.map((m) => (
@@ -26,13 +27,15 @@ export function MetricCards({ T, P, show, onToggle, siteT }: Props) {
           </span>
           {siteT ? (
             <span className="a">
-              Site average: {m.f(m.count ? siteT[m.k] / PAGES.length : siteT[m.k])}
+              Site average: {m.f(m.count ? siteT[m.k] / Math.max(1, pageCount) : siteT[m.k])}
               {m.count ? ' per page' : ''}
             </span>
           ) : (
             <span className="s">{m.sub}</span>
           )}
-          <span className="v">{m.f(T[m.k])}</span>
+          <span className="v" title={m.k === 'r1' ? rangeText(T.conv, T.vis) : undefined}>
+            {m.f(T[m.k])}
+          </span>
           <span className="d">
             <Change cur={T[m.k]} prev={P[m.k]} rate={m.rate} /> vs. previous period
           </span>

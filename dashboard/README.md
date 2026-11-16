@@ -1,6 +1,6 @@
 # Rate 1 dashboard (W4)
 
-Front end for the PoC dashboard. Vite + React + TypeScript, React Router. Sign-in, organisations, the site list and the WordPress connect page are served by `../api`. There is no site data yet: every site view shows a setup screen (`src/views/NoData.tsx`) until `src/data/model.ts` is filled from the data API. The views themselves are ported 1:1 from the design prototype.
+Front end for the PoC dashboard. Vite + React + TypeScript, React Router. Sign-in, organisations, the site list and the WordPress connect page are served by `../api`. Report views load the site's tracked data from `GET /api/sites/:siteId/stats?weeks=4|13|26` (`src/data/stats.tsx`); a site with no visits in the last 52 weeks shows a setup screen (`src/views/NoData.tsx`) instead. The views' layout comes from the design prototype.
 
 ```bash
 npm install
@@ -16,8 +16,8 @@ Emails sent in development (confirmation links, sign-in codes, invitations) appe
 | --- | --- |
 | `src/auth/` | Better Auth client, session gate (`RequireAuth`, `/api/me`), sign-in screens, onboarding, security and members settings, top-bar menus |
 | `src/site.ts` | Site-scoped paths: every dashboard view lives under `/s/:siteId` |
-| `src/data/model.ts` | Shapes the views render (pages, weekly series, changes, requests) and the site's data, empty for now |
-| `src/lib/analysis.ts` | Period totals, page diagnosis, potential, device split, change markers |
+| `src/data/model.ts`, `stats.tsx` | Stats API response types, the shapes the views render (pages, weekly series, breakdowns), and the provider that loads them per site and range |
+| `src/lib/analysis.ts` | §11 metrics from raw counts: period totals, 95% Wilson ranges, device and contact rows, page diagnosis, potential |
 | `src/lib/format.ts`, `metrics.ts` | Number formatting and the six metric definitions |
 | `src/components/` | Layout (top bar, rail), metric cards, trend chart, sortable table, small UI pieces |
 | `src/views/` | Overview, page detail, the site-wide views (search terms, sources, devices, contact options, click paths, changes, requests), `NoData` (setup screen while there is no data), and `SiteSettings` / `SetupChecklist` (real app API: `/api/sites/:siteId/config`, `/checks`) |
@@ -33,6 +33,8 @@ Per site, under `/s/:siteId`: overview · `pages/:slug` page detail (`home` for 
 
 The UI only offers sites listed by `/api/me`; the API checks access again on every call.
 
-## Next
+## Report data
 
-Fill `src/data/model.ts` from `/api/sites/:siteId/…` (tables in `specs/Data-Contract-v1.md` §10, metric definitions in §11); the views render as soon as `SITE` has weeks.
+Rate 1 uses the PoC default credit mode (landing page): a page's visitors, requests and Rate 1 count visits that started on it; time on page, scroll depth, sections and contact clicks count every view of the page. Rates show their 95% Wilson range on hover. Findings ("What to fix next", diagnoses, mobile gaps, best source) only fire with at least 30 visits and when the 95% ranges don't overlap, so small sites aren't told to fix noise.
+
+Not available yet, shown as such: search terms (needs Google Search Console, `gsc_daily`), the change log (no table), element positions on the page (needs the page scanner).

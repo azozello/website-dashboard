@@ -6,6 +6,7 @@ import { createMailer, type Mailer } from './mail.ts';
 import { registerChecks } from './checks.ts';
 import { registerRoutes } from './routes.ts';
 import { registerSiteConfig } from './site-config.ts';
+import { registerStats } from './stats.ts';
 import { createGuards } from './tenant.ts';
 
 export interface App {
@@ -64,6 +65,7 @@ export async function buildApp(settings: Settings, opts: { logger?: boolean } = 
   registerRoutes(app, db, guards, settings);
   registerSiteConfig(app, db, guards);
   registerChecks(app, db, guards, settings);
+  registerStats(app, db, guards);
 
   return { app, auth, db, mailer };
 }
