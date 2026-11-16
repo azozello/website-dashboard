@@ -1,4 +1,4 @@
-import { BOOK, CHANGES, PAGES, SITE, WEEKS, type Page, type Tone, type Week } from '../data/model';
+import { CHANNEL_NAME, DEVICE_NAME, WEEKS, type Breakdown, type Funnel, type Page, type SiteData, type Tone, type Week } from '../data/model';
 import { fi, fp, fp0 } from './format';
 
 export type Range = 4 | 13 | 26;
@@ -9,29 +9,65 @@ export const RANGES: [Range, string][] = [
 ];
 export const rangeName = (range: Range) => RANGES.find((r) => r[0] === range)![1];
 
+/** Below this many visits a rate is too uncertain to call a finding on. */
+export const MIN_VIS = 30;
+/** Engaged page views needed before time and scroll findings. */
+const MIN_ENG = 20;
+
 export interface Totals {
   vis: number;
+  conv: number;
   inq: number;
   cta: number;
+  pvs: number;
+  eng: number;
   time: number;
   scroll: number;
   r1: number;
+  /** Share of page views with engagement data (§11 "coverage"). */
+  coverage: number;
 }
 
 export function totals(a: Week[]): Totals {
-  const t = { vis: 0, inq: 0, cta: 0, time: 0, scroll: 0, r1: 0 };
+  const t = { vis: 0, conv: 0, inq: 0, cta: 0, pvs: 0, eng: 0, activeMs: 0, s75: 0 };
   a.forEach((w) => {
     t.vis += w.vis;
+    t.conv += w.conv;
     t.inq += w.inq;
     t.cta += w.cta;
-    t.time += w.time * w.vis;
-    t.scroll += w.scroll * w.vis;
+    t.pvs += w.pvs;
+    t.eng += w.eng;
+    t.activeMs += w.activeMs;
+    t.s75 += w.s75;
   });
-  t.time = t.vis ? t.time / t.vis : 0;
-  t.scroll = t.vis ? t.scroll / t.vis : 0;
-  t.r1 = t.vis ? t.inq / t.vis : 0;
-  return t;
+  return {
+    vis: t.vis,
+    conv: t.conv,
+    inq: t.inq,
+    cta: t.cta,
+    pvs: t.pvs,
+    eng: t.eng,
+    time: t.eng ? t.activeMs / t.eng / 1000 : 0,
+    scroll: t.eng ? t.s75 / t.eng : 0,
+    r1: t.vis ? t.conv / t.vis : 0,
+    coverage: t.pvs ? t.eng / t.pvs : 0,
+  };
 }
+
+/** 95 % Wilson score interval for k successes out of n (§11 "Range"). */
+export function wilson(k: number, n: number): [number, number] {
+  if (!n) return [0, 1];
+  const z = 1.96;
+  const p = k / n;
+  const d = 1 + (z * z) / n;
+  const c = (p + (z * z) / (2 * n)) / d;
+  const h = (z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / d;
+  return [Math.max(0, c - h), Math.min(1, c + h)];
+}
+export const rangeText = (k: number, n: number) => {
+  const [lo, hi] = wilson(k, n);
+  return n ? `95% range ${fp(lo)}–${fp(hi)} (${fi(k)} of ${fi(n)})` : 'No visits';
+};
 
 export interface Period {
   cur: Week[];
@@ -47,45 +83,69 @@ export function periods(series: Week[], range: Range): Period {
 
 export const perMonth = (range: Range) => 4.33 / range;
 
-/** Share of visitors reaching a position (0–100 %) on the page, interpolated from the 75 % value. */
-export function reachAt(T: Totals, pos: number): number {
-  const s75 = T.scroll;
-  const pts: [number, number][] = [
-    [0, 1],
-    [25, Math.min(0.97, s75 + 0.42)],
-    [50, Math.min(0.92, s75 + 0.2)],
-    [75, s75],
-    [100, s75 * 0.55],
-  ];
-  for (let i = 1; i < pts.length; i++) {
-    if (pos <= pts[i][0]) {
-      const a = pts[i - 1];
-      const b = pts[i];
-      return a[1] + ((b[1] - a[1]) * (pos - a[0])) / (b[0] - a[0]);
-    }
-  }
-  return pts[pts.length - 1][1];
-}
-
 export interface DeviceRow {
-  name: 'Mobile' | 'Desktop' | 'Tablet';
+  key: string;
+  name: string;
+  vis: number;
+  conv: number;
   share: number;
   r1: number;
   time: number;
   scroll: number;
-  load: number;
+  /** Mean load time in seconds; null without measurements. */
+  load: number | null;
 }
 
-export function deviceRates(p: Page, T: Totals): DeviceRow[] {
-  const m = p.mobile;
-  const t = 0.03;
-  const d = 1 - m - t;
-  const k = T.r1 / (m * p.mobF + d * p.deskF + t);
-  return [
-    { name: 'Mobile', share: m, r1: k * p.mobF, time: T.time * 0.85, scroll: T.scroll * 0.9, load: p.load[0] },
-    { name: 'Desktop', share: d, r1: k * p.deskF, time: T.time * 1.35, scroll: Math.min(0.95, T.scroll * 1.25), load: p.load[1] },
-    { name: 'Tablet', share: t, r1: k, time: T.time, scroll: T.scroll, load: (p.load[0] + p.load[1]) / 2 },
+export function deviceRows(bd: Breakdown): DeviceRow[] {
+  const tot = bd.devices.reduce((a, d) => a + d.vis, 0);
+  return ['mobile', 'desktop', 'tablet']
+    .map((k) => bd.devices.find((d) => d.name === k))
+    .filter((d) => d && (d.vis || d.pvs))
+    .map((d) => ({
+      key: d!.name,
+      name: DEVICE_NAME[d!.name] ?? d!.name,
+      vis: d!.vis,
+      conv: d!.conv,
+      share: tot ? d!.vis / tot : 0,
+      r1: d!.vis ? d!.conv / d!.vis : 0,
+      time: d!.eng ? d!.activeMs / d!.eng / 1000 : 0,
+      scroll: d!.eng ? d!.s75 / d!.eng : 0,
+      load: d!.loadN ? d!.loadMs / d!.loadN / 1000 : null,
+    }));
+}
+
+export interface ContactRow {
+  name: string;
+  /** Null: this option has no button to click (forms) or no request to count (calls). */
+  clicks: number | null;
+  inq: number | null;
+}
+
+/** Contact clicks (tracker) and counted requests (forms, bookings) side by side; options without either are left out. */
+export function contactRows(bd: Breakdown): ContactRow[] {
+  const c = bd.clicks;
+  const r = bd.requests;
+  const rows: ContactRow[] = [
+    { name: 'Phone call', clicks: c.call ?? 0, inq: null },
+    { name: 'WhatsApp', clicks: c.whatsapp ?? 0, inq: null },
+    { name: 'Email', clicks: c.email ?? 0, inq: null },
+    { name: CHANNEL_NAME.booking, clicks: c.booking_cta ?? 0, inq: r.booking ?? 0 },
+    { name: CHANNEL_NAME.form, clicks: null, inq: r.form ?? 0 },
+    { name: CHANNEL_NAME.calculator, clicks: null, inq: r.calculator ?? 0 },
   ];
+  return rows.filter((x) => (x.clicks ?? 0) > 0 || (x.inq ?? 0) > 0);
+}
+
+/** Step with the biggest drop from the step before it (index into steps), or -1. */
+export function worstStep(f: Funnel): { i: number; drop: number } {
+  let i = -1;
+  let drop = 0;
+  for (let j = 1; j < f.steps.length; j++) {
+    const prev = f.steps[j - 1].visits;
+    const d = prev ? 1 - f.steps[j].visits / prev : 0;
+    if (d > drop) [i, drop] = [j, d];
+  }
+  return { i, drop };
 }
 
 export interface Diagnosis {
@@ -94,83 +154,78 @@ export interface Diagnosis {
   text: string;
 }
 
-export function diagnose(p: Page, T: Totals, S: Totals, range: Range): Diagnosis[] {
+export function diagnose(p: Page, T: Totals, S: Totals, range: Range, funnels: Funnel[]): Diagnosis[] {
   const out: Diagnosis[] = [];
-  const dev = deviceRates(p, T);
-  const contact = p.elements.filter((e) => e[0] === 'Contact form' || e[0] === BOOK).sort((a, b) => a[1] - b[1])[0];
-  const formReach = contact ? reachAt(T, contact[1]) : 1;
+  const [lo, hi] = wilson(T.conv, T.vis);
   const monthlyVis = T.vis * perMonth(range);
-  if (T.time < 45)
+  const enough = T.vis >= MIN_VIS;
+
+  if (!enough && T.pvs)
+    out.push({
+      tone: 'info',
+      title: T.vis ? 'Too few visits to judge Rate 1' : 'Rarely the first page of a visit',
+      text: T.vis
+        ? `${fi(T.vis)} visits started on this page in this period. Rates become reliable from about ${MIN_VIS}.`
+        : 'Rate 1 is credited to the page a visit starts on. This page is mostly reached from other pages.',
+    });
+  if (T.eng >= MIN_ENG && T.time < 45)
     out.push({ tone: 'warn', title: 'Visitors leave after ' + Math.round(T.time) + ' seconds', text: 'The first screen doesn’t convince. Put treatment and location in the headline, and move insurance, cost info and reviews up.' });
-  if (contact && formReach < 0.25)
-    out.push({ tone: 'warn', title: 'Only ' + fp0(formReach) + ' see ' + (contact[0] === BOOK ? 'the online booking' : 'the contact form'), text: 'Move contact options up: a sticky call and booking bar on mobile, booking in the first third of the page.' });
-  if (T.time >= 100 && T.r1 < S.r1)
+  const sc = p.bd.scroll;
+  if (sc.eng >= MIN_ENG && sc.s50 / sc.eng < 0.4)
+    out.push({ tone: 'warn', title: 'Only ' + fp0(sc.s50 / sc.eng) + ' read half of the page', text: 'Whatever sits below the middle is rarely seen. Move contact options and booking into the first third.' });
+  if (enough && T.time >= 100 && hi < S.r1)
     out.push({ tone: 'warn', title: 'Read for a long time, but few requests', text: 'The interest is there. Booking higher up and a shorter form make the next step easier.' });
-  if (dev[0].r1 < 0.65 * dev[1].r1)
-    out.push({ tone: 'warn', title: 'Mobile much weaker than desktop', text: 'Rate 1 on mobile ' + fp(dev[0].r1) + ' vs. ' + fp(dev[1].r1) + ' on desktop. Check mobile load time (' + p.load[0].toFixed(1) + ' s) and buttons.' });
-  if (p.calc) {
-    let worst: { drop: number; step: string } | null = null;
-    for (let i = 1; i < p.calc.length - 1; i++) {
-      const drop = 1 - p.calc[i][1] / p.calc[i - 1][1];
-      if (!worst || drop > worst.drop) worst = { drop, step: p.calc[i - 1][0] };
-    }
-    if (worst && worst.drop > 0.22)
-      out.push({ tone: 'warn', title: fp0(worst.drop) + ' drop out of booking after “' + worst.step + '”', text: 'Simplify the next step or make it optional.' });
+  const dev = deviceRows(p.bd);
+  const mob = dev.find((d) => d.key === 'mobile');
+  const desk = dev.find((d) => d.key === 'desktop');
+  if (mob && desk && mob.vis >= MIN_VIS && desk.vis >= MIN_VIS && wilson(mob.conv, mob.vis)[1] < wilson(desk.conv, desk.vis)[0])
+    out.push({
+      tone: 'warn',
+      title: 'Mobile much weaker than desktop',
+      text: 'Rate 1 on mobile ' + fp(mob.r1) + ' vs. ' + fp(desk.r1) + ' on desktop. Check mobile load time' + (mob.load !== null ? ' (' + mob.load.toFixed(1) + ' s)' : '') + ' and buttons.',
+    });
+  for (const f of funnels.filter((x) => x.startPath === p.path && (x.steps[0]?.visits ?? 0) >= 10)) {
+    const w = worstStep(f);
+    if (w.drop > 0.22)
+      out.push({ tone: 'warn', title: fp0(w.drop) + ' drop out after “' + (f.steps[w.i - 1].name ?? 'step ' + f.steps[w.i - 1].step) + '”', text: 'Simplify the next step or make it optional.' });
   }
-  const top = p.terms.slice().sort((a, b) => b[2] - a[2])[0];
-  if (top && top[3] / top[2] < 0.025 && top[2] > 3000)
-    out.push({ tone: 'info', title: '“' + top[0] + '”: seen often, rarely clicked', text: top[2].toLocaleString('en-US') + ' impressions, only ' + fp(top[3] / top[2]) + ' click rate. Rewrite the title and description for Google.' });
-  if (monthlyVis < 150)
-    out.push({ tone: 'info', title: 'Few visitors', text: 'About ' + fi(monthlyVis) + ' visitors a month. Build visibility on Google first, then optimize.' });
-  if (T.r1 > S.r1 * 1.5)
-    out.push({ tone: 'good', title: 'One of the strongest pages', text: 'Rate 1 well above the site average. Link to it more from other pages.' });
+  if (T.vis && monthlyVis < 150)
+    out.push({ tone: 'info', title: 'Few visitors', text: 'About ' + fi(monthlyVis) + ' visits a month start here. Build visibility on Google first, then optimize.' });
+  if (enough && lo > S.r1)
+    out.push({ tone: 'good', title: 'One of the strongest pages', text: 'Rate 1 clearly above the site average (' + fp(S.r1) + '). Link to it more from other pages.' });
   if (!out.length)
-    out.push({ tone: 'good', title: 'No major issues', text: 'The page is doing fine. Next test: move reviews or insurance and cost info higher up.' });
+    out.push({ tone: 'good', title: 'No major issues', text: 'Nothing stands out on this page. Next test: move reviews or insurance and cost info higher up.' });
   const order: Record<Tone, number> = { warn: 0, info: 1, good: 2 };
   return out.sort((a, b) => order[a.tone] - order[b.tone]);
 }
 
 export interface PageStats extends Period {
   p: Page;
-  dev: DeviceRow[];
-  /** Extra requests per month if the page reached the site's Rate 1. */
+  /** Extra requests per month if the page reached the site's Rate 1; only when it is clearly below it. */
   potential: number;
   diag: Diagnosis[];
 }
 
-export function pageStats(p: Page, S: Totals, range: Range): PageStats {
+export function pageStats(p: Page, S: Totals, range: Range, funnels: Funnel[]): PageStats {
   const pr = periods(p.series, range);
+  const below = pr.T.vis >= MIN_VIS && wilson(pr.T.conv, pr.T.vis)[1] < S.r1;
   return {
     p,
     ...pr,
-    dev: deviceRates(p, pr.T),
-    potential: Math.max(0, (S.r1 - pr.T.r1) * pr.T.vis * perMonth(range)),
-    diag: diagnose(p, pr.T, S, range),
+    potential: below ? (S.r1 - pr.T.r1) * pr.T.vis * perMonth(range) : 0,
+    diag: diagnose(p, pr.T, S, range, funnels),
   };
 }
 
-export function allStats(range: Range) {
-  const S = periods(SITE, range);
-  return { S, stats: PAGES.map((p) => pageStats(p, S.T, range)) };
+export function allStats(d: SiteData, range: Range) {
+  const S = periods(d.site, range);
+  return { S, stats: d.pages.map((p) => pageStats(p, S.T, range, d.funnels)) };
 }
 
-/** Scale factor from the page's last-4-weeks baseline to the selected range. */
-export const baseK = (p: Page, T: Totals) => T.vis / totals(p.series.slice(48)).vis;
-
+/** Numbered change marker on a chart. There is no change log yet, so charts get none. */
 export interface Flag {
   idx: number;
   num: number;
   title: string;
   date: string;
-}
-
-/** Change markers inside the selected range, optionally for one page only. */
-export function flagsFor(range: Range, pageId?: string): Flag[] {
-  const first = WEEKS - range;
-  return CHANGES.filter((c) => c.at >= first && (!pageId || c.pages.includes(pageId))).map((c) => ({
-    idx: c.at - first,
-    num: c.num,
-    title: c.title,
-    date: c.date,
-  }));
 }

@@ -54,11 +54,14 @@ The session's active organisation never grants access. A site with `org_id = NUL
 | GET | `/api/sites/:siteId/config` | member | tracking config (`site_config`, §5) in editor shape, plus the forms the WordPress plugin reported |
 | PUT | `/api/sites/:siteId/config` | admin | replace sections, booking paths, `spa`, request rules; bumps `config_version`, 409 if based on an older version, 400 `{field, message}` when invalid |
 | GET | `/api/sites/:siteId/checks` | member | setup checklist (§12), computed from the tracking tables and stored in `site_checks` |
+| GET | `/api/sites/:siteId/stats?weeks=4\|13\|26` | member | report data (§10, §11): 52 weekly series for the site and its 30 most viewed pages, breakdowns for the range (sources, devices, contact clicks and requests, scroll, time, sections), booking/calculator funnels, routes to a request, latest 200 requests |
 | GET | `/healthz` | public | `{ ok, version }` |
 
 **Request rules** (`src/site-config.ts`): the editor works on one list; on save, rules become `request_rules` entries (`{method, form, source?, form_id?, path?, counts}`, contract README edit #6) and browser rules with selectors also become `forms_browser` entries. Each form must have exactly one rule with `counts: true` (§5). Typed paths (booking, thank-you, section pages) are normalised with the §1 rule before storing.
 
 **Setup checklist** (`src/checks.ts`): `pass` / `fail` / `pending`. Pending means the source doesn't exist yet: `pages_tagged` and `csp_ok` need the page scanner, `gsc_connected` needs `gsc_connections`, `buttons_found` passes on a contact click but can't fail without the scanner. Each source table is looked up with `to_regclass`, so the checklist also works on a database without ingest's tables.
+
+**Report data** (`src/stats.ts`): raw counts read from ingest's tables; the dashboard computes rates and ranges. Test visits and everything linked to them are left out; a counted request is `counts AND NOT spam`; weeks start Monday in the site's timezone. Pages use the landing-page credit mode (§11 PoC default). Without ingest's tables the response is empty.
 
 New dashboard data endpoints go under `/api/sites/:siteId/…` with `preHandler: requireSite('member')` and filter every query by `request.tenant.siteId`.
 

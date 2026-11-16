@@ -4,7 +4,7 @@ import { SiteSwitcher, UserMenu } from '../auth/menus';
 import { useMe } from '../auth/session';
 import { Logo } from '../auth/ui';
 import { RANGES } from '../lib/analysis';
-import { PAGES } from '../data/model';
+import { useStats } from '../data/stats';
 import { sitePath, useSiteId, useSiteNavigate } from '../site';
 import { useDashboard } from '../state';
 import { pagePath } from './ui';
@@ -64,6 +64,7 @@ function Rail() {
   const navigate = useSiteNavigate();
   const siteId = useSiteId();
   const ref = useRef<HTMLElement>(null);
+  const pages = useStats().data?.pages ?? [];
 
   // Keep the current section in view inside the rail. On phones the rail is a horizontal strip: centre it.
   // On short desktop screens the rail scrolls vertically: reveal it only when hidden, so a click never shifts the rail.
@@ -92,10 +93,10 @@ function Rail() {
   return (
     <nav ref={ref} className="rail" aria-label="Sections">
       {item('/', 'Overview')}
-      {PAGES.length > 0 && (
+      {pages.length > 0 && (
         <>
           <div className="label">Pages</div>
-          {PAGES.map((p) => item(pagePath(p), p.name, true))}
+          {pages.map((p) => item(pagePath(p), p.name, true))}
         </>
       )}
       <div className="sep" />
