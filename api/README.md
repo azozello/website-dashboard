@@ -54,14 +54,22 @@ The session's active organisation never grants access. A site with `org_id = NUL
 | GET | `/api/sites/:siteId/config` | member | tracking config (`site_config`, §5) in editor shape, plus the forms the WordPress plugin reported |
 | PUT | `/api/sites/:siteId/config` | admin | replace sections, booking paths, `spa`, request rules; bumps `config_version`, 409 if based on an older version, 400 `{field, message}` when invalid |
 | GET | `/api/sites/:siteId/checks` | member | setup checklist (§12), computed from the tracking tables and stored in `site_checks` |
-| GET | `/api/sites/:siteId/stats?weeks=4\|13\|26` | member | report data (§10, §11): 52 weekly series for the site and its 30 most viewed pages, breakdowns for the range (sources, devices, contact clicks and requests, scroll, time, sections), booking/calculator funnels, routes to a request, latest 200 requests |
+| GET | `/api/sites/:siteId/stats?weeks=4\|13\|26` | member | report data (§10, §11): 52 weekly series for the site and its 30 most viewed pages, breakdowns for the range (sources, devices, contact clicks and requests, scroll, time, sections), booking/calculator funnels, routes to a request, latest 200 requests, Search Console totals and terms (site: top 200 with main landing page; pages: top 20) |
+| GET | `/api/sites/:siteId/gsc` | member | Search Console connection: status, property, Google account, last import, matching properties (admins also get the account's other properties) |
+| POST | `/api/sites/:siteId/gsc/connect` | admin | `{ url }` of Google's consent screen (read-only Search Console scope, offline, PKCE); 503 when the server has no Google client or token key |
+| GET | `/api/gsc/callback` | signed in (the user who started) | Google's redirect: redeems the one-time state, stores the refresh token encrypted, picks the matching property, starts the first import; redirects to `/s/:siteId/settings/search-console?gsc=connected\|choose\|error&reason=…` |
+| PUT | `/api/sites/:siteId/gsc/property` | admin | `{property}`: choose among the matching properties; starts an import |
+| POST | `/api/sites/:siteId/gsc/sync` | admin | import now (202); 409 unless active |
+| DELETE | `/api/sites/:siteId/gsc` | admin | disconnect: deletes token and imported rows; revokes the Google grant unless another site uses the same account |
 | GET | `/healthz` | public | `{ ok, version }` |
 
 **Request rules** (`src/site-config.ts`): the editor works on one list; on save, rules become `request_rules` entries (`{method, form, source?, form_id?, path?, counts}`, contract README edit #6) and browser rules with selectors also become `forms_browser` entries. Each form must have exactly one rule with `counts: true` (§5). Typed paths (booking, thank-you, section pages) are normalised with the §1 rule before storing.
 
-**Setup checklist** (`src/checks.ts`): `pass` / `fail` / `pending`. Pending means the source doesn't exist yet: `pages_tagged` and `csp_ok` need the page scanner, `gsc_connected` needs `gsc_connections`, `buttons_found` passes on a contact click but can't fail without the scanner. Each source table is looked up with `to_regclass`, so the checklist also works on a database without ingest's tables.
+**Setup checklist** (`src/checks.ts`): `pass` / `fail` / `pending`. Pending means the source doesn't exist yet: `pages_tagged` and `csp_ok` need the page scanner, `gsc_connected` is pending only on a server without a Google client, `buttons_found` passes on a contact click but can't fail without the scanner. Each source table is looked up with `to_regclass`, so the checklist also works on a database without ingest's tables.
 
 **Report data** (`src/stats.ts`): raw counts read from ingest's tables; the dashboard computes rates and ranges. Test visits and everything linked to them are left out; a counted request is `counts AND NOT spam`; weeks start Monday in the site's timezone. Pages use the landing-page credit mode (§11 PoC default). Without ingest's tables the response is empty.
+
+**Search Console** (`src/gsc.ts`, `src/google.ts`, `src/seal.ts`): a per-site grant, separate from Google sign-in, same OAuth client. Redirect URI `<APP_BASE_URL>/api/gsc/callback`, scope `webmasters.readonly` (plus `openid email` to show which account). Refresh tokens are sealed with AES-256-GCM (`TOKEN_ENCRYPTION_KEY`, bound to the site id). Property: the account's only domain property covering one of the site's hosts, else its only root URL-prefix property on an allowed origin; otherwise an admin chooses. Import: Search Analytics by (date, page) and (date, page, query); page URLs become §1 paths and only the site's hosts are kept; the first import reads 425 days, later ones re-read the last 5 days; daily (hourly check in `main.ts`, due after 20 h). Google refusing the token (revoked; 7 days old while the OAuth app is in Testing) or the property sets `status = 'error'`: connect again. The sync runs with `app.job = 'gsc_sync'` on its connection, which the row-level security policies in `007_gsc.sql` recognise.
 
 New dashboard data endpoints go under `/api/sites/:siteId/…` with `preHandler: requireSite('member')` and filter every query by `request.tenant.siteId`.
 
@@ -73,10 +81,11 @@ New dashboard data endpoints go under `/api/sites/:siteId/…` with `preHandler:
 - `002_auth.sql`: Better Auth schema, generated from `src/auth.ts`. Regenerate into a new migration when upgrading Better Auth or changing plugins.
 - `003_tenancy.sql`: `sites.org_id` (nullable, `ON DELETE SET NULL`), unique membership per (org, user), grants.
 - `006_site_checks.sql`: `site_checks` (§10, one row per site and check id). Row-level security policies when the RLS migration has already run.
+- `007_gsc.sql`: `gsc_connections`, `gsc_daily` (§10; `query` NULL = page total), `gsc_oauth_states`. Row-level security policies (incl. the sync job's) when the RLS migration has already run; if it runs later, it must add them.
 
 ## Environment
 
-See `.env.example`. Required when deployed (`ENV=test|prod` or an `https://` `APP_BASE_URL`): `DATABASE_URL`, `APP_BASE_URL`, `BETTER_AUTH_SECRET` (32+ random characters), `SMTP_URL`. Optional: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `MAIL_FROM`, `CLIENT_IP_HEADER` (default `x-forwarded-for`), `HOST` (127.0.0.1), `PORT` (8081).
+See `.env.example`. Required when deployed (`ENV=test|prod` or an `https://` `APP_BASE_URL`): `DATABASE_URL`, `APP_BASE_URL`, `BETTER_AUTH_SECRET` (32+ random characters), `SMTP_URL`. Optional: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY` (32 bytes, base64; deployed without it Search Console is off, locally a fixed dev key stands in; never rotate it, stored tokens need it), `MAIL_FROM`, `CLIENT_IP_HEADER` (default `x-forwarded-for`), `HOST` (127.0.0.1), `PORT` (8081).
 
 ## Reverse proxy
 

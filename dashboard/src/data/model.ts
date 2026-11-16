@@ -63,16 +63,41 @@ export interface RequestRow {
   device: string | null;
   secondsBefore: number | null;
 }
+export interface SearchTerm {
+  query: string;
+  clicks: number;
+  impressions: number;
+  /** Average Google position (1 = top); null without impressions. */
+  position: number | null;
+  /** Site-wide list: the page that gets most of the term's clicks. */
+  path?: string;
+}
+/** Google search from Search Console for the range. Totals include anonymised queries; terms don't. */
+export interface PageSearch {
+  clicks: number;
+  impressions: number;
+  position: number | null;
+  terms: SearchTerm[];
+}
+export type SearchStatus = 'unavailable' | 'not_connected' | 'needs_property' | 'active' | 'error';
+export interface SearchData extends PageSearch {
+  status: SearchStatus;
+  property: string | null;
+  lastSyncAt: string | null;
+  /** Newest day imported (YYYY-MM-DD). */
+  through: string | null;
+}
 export interface StatsResponse {
   timezone: string;
   generatedAt: string;
   weeks: string[];
   range: { weeks: number; from: string };
   site: { series: RawWeek[]; breakdown: Breakdown; unattributed: number };
-  pages: { path: string; title: string | null; series: RawWeek[]; breakdown: Breakdown }[];
+  pages: { path: string; title: string | null; series: RawWeek[]; breakdown: Breakdown; search: PageSearch }[];
   funnels: Funnel[];
   routes: RouteRow[];
   requests: RequestRow[];
+  search: SearchData;
 }
 
 /* ---------- What the views render ---------- */
@@ -96,6 +121,7 @@ export interface Page {
   name: string;
   series: Week[];
   bd: Breakdown;
+  search: PageSearch;
 }
 
 export interface SiteData {
@@ -109,6 +135,7 @@ export interface SiteData {
   funnels: Funnel[];
   routes: RouteRow[];
   requests: RequestRow[];
+  search: SearchData;
   /** Range the breakdowns cover (weeks). */
   rangeWeeks: number;
 }
@@ -163,6 +190,7 @@ export function buildSiteData(r: StatsResponse): SiteData {
     name: p.title && titleCount.get(p.title) === 1 ? p.title : p.path === '/' ? 'Home page' : p.path,
     series: series(p.series),
     bd: p.breakdown,
+    search: p.search ?? { clicks: 0, impressions: 0, position: null, terms: [] },
   }));
   return {
     timezone: r.timezone,
@@ -175,6 +203,7 @@ export function buildSiteData(r: StatsResponse): SiteData {
     funnels: r.funnels,
     routes: r.routes,
     requests: r.requests,
+    search: r.search ?? { status: 'unavailable', property: null, lastSyncAt: null, through: null, clicks: 0, impressions: 0, position: null, terms: [] },
     rangeWeeks: r.range.weeks,
   };
 }

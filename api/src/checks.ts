@@ -10,8 +10,8 @@ import type { Guards } from './tenant.ts';
  *
  *   pass     the condition in §12 holds
  *   fail     it doesn't (reason says what is missing)
- *   pending  can't be decided yet: the data source doesn't exist (page scanner, Search
- *            Console) or the WordPress plugin hasn't said hello
+ *   pending  can't be decided yet: the data source doesn't exist (page scanner; Search
+ *            Console on a server without a Google client) or the WordPress plugin hasn't said hello
  *
  * Tracking tables belong to ingest; each source is looked up with to_regclass so the
  * checklist also works on a database ingest hasn't migrated (development, tests).
@@ -56,7 +56,8 @@ async function last(db: Db, sql: string, siteId: string, window: string): Promis
 
 const iso = (l: Last) => (l ? { lastAt: l.at.toISOString() } : undefined);
 
-export async function computeChecks(db: Db, siteId: string, platform: string): Promise<CheckResult[]> {
+/** opts.gsc: whether this server can connect Search Console (Google client and token key configured). */
+export async function computeChecks(db: Db, siteId: string, platform: string, opts: { gsc?: boolean } = {}): Promise<CheckResult[]> {
   const t = (
     await db.query<Record<(typeof TABLES)[number], boolean>>(`SELECT ${TABLES.map((n) => `to_regclass('${n}') IS NOT NULL AS ${n}`).join(', ')}`)
   ).rows[0];
@@ -81,7 +82,12 @@ export async function computeChecks(db: Db, siteId: string, platform: string): P
           .then((r) => r.rows[0] ?? null)
       : null,
     t.gsc_connections
-      ? db.query<{ status: string | null; property: string | null }>('SELECT status, property FROM gsc_connections WHERE site_id = $1', [siteId]).then((r) => r.rows[0] ?? null)
+      ? db
+          .query<{ status: string; property: string | null; last_error: string | null; last_sync_at: Date | null }>(
+            'SELECT status, property, last_error, last_sync_at FROM gsc_connections WHERE site_id = $1',
+            [siteId],
+          )
+          .then((r) => r.rows[0] ?? null)
       : null,
   ]);
 
@@ -146,18 +152,18 @@ export async function computeChecks(db: Db, siteId: string, platform: string): P
         else add(id, 'pending', 'no_contact_click');
         break;
       case 'gsc_connected':
-        if (!t.gsc_connections) add(id, 'pending', 'gsc_not_available');
+        if (!t.gsc_connections || !opts.gsc) add(id, 'pending', 'gsc_not_available');
         else if (!gsc) add(id, 'fail', 'not_connected');
-        else if (gsc.status !== 'active') add(id, 'fail', 'connection_inactive', { status: gsc.status });
-        else if (!gsc.property) add(id, 'fail', 'no_property');
-        else add(id, 'pass', 'connected', { property: gsc.property });
+        else if (gsc.status === 'needs_property' || (gsc.status === 'active' && !gsc.property)) add(id, 'fail', 'no_property');
+        else if (gsc.status !== 'active') add(id, 'fail', 'connection_inactive', { status: gsc.status, error: gsc.last_error });
+        else add(id, 'pass', 'connected', { property: gsc.property, ...(gsc.last_sync_at ? { lastAt: gsc.last_sync_at.toISOString() } : {}) });
         break;
     }
   }
   return out;
 }
 
-export function registerChecks(app: FastifyInstance, db: Db, { requireSite }: Guards, settings: Settings) {
+export function registerChecks(app: FastifyInstance, db: Db, { requireSite }: Guards, settings: Settings, gscAvailable = false) {
   /** The checklist, plus what the page needs to explain fixes (script tag, allowed origins for the live check). */
   app.get('/api/sites/:siteId/checks', { preHandler: requireSite('member') }, async (req) => {
     const siteId = req.tenant!.siteId!;
@@ -166,7 +172,7 @@ export function registerChecks(app: FastifyInstance, db: Db, { requireSite }: Gu
       [siteId],
     );
     const site = rows[0];
-    const checks = await computeChecks(db, siteId, site.platform);
+    const checks = await computeChecks(db, siteId, site.platform, { gsc: gscAvailable });
     const stored = await db.query<{ check_id: CheckId; checked_at: Date }>(
       `INSERT INTO site_checks (site_id, check_id, status, reason, checked_at)
        SELECT $1::uuid, c, s, r, now() FROM unnest($2::text[], $3::text[], $4::text[]) AS u(c, s, r)

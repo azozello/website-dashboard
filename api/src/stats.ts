@@ -79,11 +79,39 @@ export interface Breakdown {
   sections: { name: string; n: number }[];
 }
 
+export interface SearchTerm {
+  query: string;
+  clicks: number;
+  impressions: number;
+  /** Average position weighted by impressions (1 = top); null without impressions. */
+  position: number | null;
+  /** Site-wide list: the page that gets most of the term's clicks (impressions on a tie). */
+  path?: string;
+}
+
+/** Google search for the range, from Search Console (gsc_daily). Totals include anonymised queries; terms don't. */
+export interface PageSearch {
+  clicks: number;
+  impressions: number;
+  position: number | null;
+  terms: SearchTerm[];
+}
+
+export interface SearchData extends PageSearch {
+  /** unavailable: this server can't connect Search Console; otherwise the site's connection. */
+  status: 'unavailable' | 'not_connected' | 'needs_property' | 'active' | 'error';
+  property: string | null;
+  lastSyncAt: string | null;
+  /** Newest day imported (Search Console days are Pacific Time); null before the first sync. */
+  through: string | null;
+}
+
 export interface PageData {
   path: string;
   title: string | null;
   series: RawWeek[];
   breakdown: Breakdown;
+  search: PageSearch;
 }
 
 export interface Funnel {
@@ -125,9 +153,78 @@ export interface Stats {
   funnels: Funnel[];
   routes: RouteRow[];
   requests: RequestRow[];
+  search: SearchData;
 }
 
+export const MAX_TERMS = 200;
+export const MAX_PAGE_TERMS = 20;
+
 type Q = Pick<Db, 'query'>;
+
+const emptySearch = (): PageSearch => ({ clicks: 0, impressions: 0, position: null, terms: [] });
+
+/** gsc_daily days within the range: $2 = from, $3 = now (timestamptz), $4 = site timezone. */
+const GSC_RANGE = `date >= ($2::timestamptz AT TIME ZONE $4)::date AND date <= ($3::timestamptz AT TIME ZONE $4)::date`;
+const POSITION = `(sum(position * impressions) / nullif(sum(impressions), 0))::float8`;
+
+/** The site's Search Console connection, totals and top terms (each with its main landing page). */
+async function siteSearch(db: Q, siteId: string, from: Date, now: Date, tz: string, available: boolean): Promise<SearchData> {
+  const head = { status: 'unavailable' as SearchData['status'], property: null as string | null, lastSyncAt: null as string | null, through: null as string | null };
+  if (!available) return { ...head, ...emptySearch() };
+  const D = [siteId, from, now, tz];
+  const [conn, tot, terms] = await Promise.all([
+    db.query<{ status: SearchData['status']; property: string | null; last_sync_at: Date | null; through: string | null }>(
+      `SELECT status, property, last_sync_at, to_char(synced_through, 'YYYY-MM-DD') AS through FROM gsc_connections WHERE site_id = $1`,
+      [siteId],
+    ),
+    db.query<{ clicks: number; impressions: number; position: number | null }>(
+      `SELECT coalesce(sum(clicks), 0)::int AS clicks, coalesce(sum(impressions), 0)::int AS impressions, ${POSITION} AS position
+         FROM gsc_daily WHERE site_id = $1 AND query IS NULL AND ${GSC_RANGE}`,
+      D,
+    ),
+    db.query<SearchTerm>(
+      `WITH qp AS (
+         SELECT query, path, sum(clicks) AS c, sum(impressions) AS i, sum(position * impressions) AS pw
+           FROM gsc_daily WHERE site_id = $1 AND query IS NOT NULL AND ${GSC_RANGE} GROUP BY query, path)
+       SELECT query, sum(c)::int AS clicks, sum(i)::int AS impressions, (sum(pw) / nullif(sum(i), 0))::float8 AS position,
+              (array_agg(path ORDER BY c DESC, i DESC, path))[1] AS path
+         FROM qp GROUP BY query ORDER BY clicks DESC, impressions DESC, query LIMIT ${MAX_TERMS}`,
+      D,
+    ),
+  ]);
+  const c = conn.rows[0];
+  return {
+    status: c?.status ?? 'not_connected',
+    property: c?.status === 'active' ? c.property : null,
+    lastSyncAt: c?.last_sync_at?.toISOString() ?? null,
+    through: c?.through ?? null,
+    ...tot.rows[0],
+    terms: terms.rows,
+  };
+}
+
+/** Per listed page: Search Console totals and its top MAX_PAGE_TERMS terms (§11: joined on the normalised path). */
+async function pagesSearch(db: Q, siteId: string, from: Date, now: Date, tz: string, pages: Map<string, PageData>) {
+  if (!pages.size) return;
+  const D = [siteId, from, now, tz, [...pages.keys()]];
+  const [tot, terms] = await Promise.all([
+    db.query<{ path: string; clicks: number; impressions: number; position: number | null }>(
+      `SELECT path, sum(clicks)::int AS clicks, sum(impressions)::int AS impressions, ${POSITION} AS position
+         FROM gsc_daily WHERE site_id = $1 AND query IS NULL AND path = ANY($5) AND ${GSC_RANGE} GROUP BY path`,
+      D,
+    ),
+    db.query<SearchTerm & { path: string }>(
+      `SELECT path, query, clicks, impressions, position FROM (
+         SELECT path, query, sum(clicks)::int AS clicks, sum(impressions)::int AS impressions, ${POSITION} AS position,
+                row_number() OVER (PARTITION BY path ORDER BY sum(clicks) DESC, sum(impressions) DESC, query) AS rn
+           FROM gsc_daily WHERE site_id = $1 AND query IS NOT NULL AND path = ANY($5) AND ${GSC_RANGE} GROUP BY path, query) x
+        WHERE rn <= ${MAX_PAGE_TERMS} ORDER BY path, rn`,
+      D,
+    ),
+  ]);
+  for (const r of tot.rows) Object.assign(pages.get(r.path)!.search, { clicks: r.clicks, impressions: r.impressions, position: r.position });
+  for (const { path, ...t } of terms.rows) pages.get(path)?.search.terms.push(t);
+}
 
 const emptyWeek = (): RawWeek => ({ vis: 0, conv: 0, inq: 0, cta: 0, pvs: 0, eng: 0, activeMs: 0, s75: 0 });
 const emptyBreakdown = (): Breakdown => ({
@@ -159,7 +256,8 @@ const COUNTED_REQUESTS = `requests r LEFT JOIN visits rv ON rv.id = r.visit_id
   LEFT JOIN pageviews rp ON rp.site_id = r.site_id AND rp.pv = r.pv
   WHERE r.site_id = $1 AND r.counts AND NOT r.spam AND (rv.id IS NULL OR NOT rv.test)`;
 
-export async function computeStats(db: Q, siteId: string, opts: { weeks: number; now?: Date }): Promise<Stats> {
+/** opts.gsc: whether this server can connect Search Console (else search.status is 'unavailable'). */
+export async function computeStats(db: Q, siteId: string, opts: { weeks: number; now?: Date; gsc?: boolean }): Promise<Stats> {
   const now = opts.now ?? new Date();
   const site = (await db.query<{ timezone: string; request_rules: unknown }>(
     `SELECT s.timezone, c.request_rules FROM sites s LEFT JOIN site_config c ON c.site_id = s.id WHERE s.id = $1`,
@@ -191,8 +289,9 @@ export async function computeStats(db: Q, siteId: string, opts: { weeks: number;
     funnels: [],
     routes: [],
     requests: [],
+    search: await siteSearch(db, siteId, b.from, now, tz, opts.gsc ?? false),
   };
-  // Ingest hasn't created its tables (development database): nothing to report.
+  // Ingest hasn't created its tables (development database): nothing more to report.
   if (!tracking) return out;
 
   const P = [siteId, tz, b.start_local, b.start, now];
@@ -240,7 +339,9 @@ export async function computeStats(db: Q, siteId: string, opts: { weeks: number;
   const views = new Map<string, number>();
   for (const r of pvRows.rows) if (!r.site && r.path !== null) views.set(r.path, (views.get(r.path) ?? 0) + r.pvs);
   const paths = [...views].sort((a, c) => c[1] - a[1] || a[0].localeCompare(c[0])).slice(0, MAX_PAGES).map(([p]) => p);
-  const pages = new Map<string, PageData>(paths.map((p) => [p, { path: p, title: null, series: Array.from({ length: WEEKS }, emptyWeek), breakdown: emptyBreakdown() }]));
+  const pages = new Map<string, PageData>(
+    paths.map((p) => [p, { path: p, title: null, series: Array.from({ length: WEEKS }, emptyWeek), breakdown: emptyBreakdown(), search: emptySearch() }]),
+  );
 
   const week = (path: string | null, site: boolean, i: number): RawWeek | null => {
     if (i < 0 || i >= WEEKS) return null;
@@ -453,6 +554,7 @@ export async function computeStats(db: Q, siteId: string, opts: { weeks: number;
     secondsBefore: r.secs === null ? null : Math.max(0, r.secs),
   }));
 
+  if (opts.gsc) await pagesSearch(db, siteId, b.from, now, tz, pages);
   out.pages = [...pages.values()];
   return out;
 }
@@ -463,7 +565,7 @@ export function shortRoute(route: string[]): string[] {
   return r.length <= ROUTE_STEPS ? r : [r[0], '…', ...r.slice(r.length - (ROUTE_STEPS - 2))];
 }
 
-export function registerStats(app: FastifyInstance, db: Db, { requireSite }: Guards) {
+export function registerStats(app: FastifyInstance, db: Db, { requireSite }: Guards, gscAvailable = false) {
   app.get(
     '/api/sites/:siteId/stats',
     {
@@ -473,7 +575,7 @@ export function registerStats(app: FastifyInstance, db: Db, { requireSite }: Gua
     async (req, reply) => {
       const weeks = (req.query as { weeks?: number }).weeks ?? 13;
       reply.header('cache-control', 'private, no-store');
-      return computeStats(db, req.tenant!.siteId!, { weeks });
+      return computeStats(db, req.tenant!.siteId!, { weeks, gsc: gscAvailable });
     },
   );
 }

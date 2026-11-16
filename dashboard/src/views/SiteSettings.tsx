@@ -9,12 +9,14 @@ import { ApiError, api } from '../auth/client';
 import { useMe } from '../auth/session';
 import { sitePath, useSiteId } from '../site';
 import './settings.css';
+import { SearchConsoleTab } from './SearchConsole';
 import { PLATFORM_NAME, toOrigin, validSelector, type DetectedForm, type Method, type Rule, type SiteConfig, type SiteDetails } from './siteApi';
 
 const TABS: [string, string][] = [
   ['', 'Website'],
   ['tracking', 'Sections & booking'],
   ['requests', 'Request rules'],
+  ['search-console', 'Search Console'],
 ];
 
 const tabOf = (field: string) => (/^(sections|bookingPaths|spa)/.test(field) ? 'tracking' : field.startsWith('requestRules') ? 'requests' : '');
@@ -168,9 +170,14 @@ export function SiteSettings() {
         ))}
       </div>
 
-      <fieldset className={`set-fields${canEdit ? '' : ' readonly'}`} disabled={!canEdit || busy}>
-        {tab === 'tracking' ? <TrackingTab {...ctx} /> : tab === 'requests' ? <RulesTab {...ctx} detected={detected} /> : <WebsiteTab {...ctx} site={site} />}
-      </fieldset>
+      {tab === 'search-console' ? (
+        // Takes effect at once (connect, choose, disconnect); not part of the draft below.
+        <SearchConsoleTab siteId={siteId} canEdit={canEdit} />
+      ) : (
+        <fieldset className={`set-fields${canEdit ? '' : ' readonly'}`} disabled={!canEdit || busy}>
+          {tab === 'tracking' ? <TrackingTab {...ctx} /> : tab === 'requests' ? <RulesTab {...ctx} detected={detected} /> : <WebsiteTab {...ctx} site={site} />}
+        </fieldset>
+      )}
 
       {(dirty || banner) && (
         <div className={`savebar${dirty ? ' dirty' : ''}`} role="region" aria-label="Save changes">

@@ -106,6 +106,8 @@ services:
       MAIL_FROM: ${MAIL_FROM:?missing; deploy.sh sets a default (infra/deploy/merge-secrets.sh)}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      # Encrypts stored Search Console refresh tokens; generated on the server (cloud-init, else merge-secrets.sh).
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:?missing; deploy.sh generates it (infra/deploy/merge-secrets.sh)}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:8081/healthz"]
       interval: 10s

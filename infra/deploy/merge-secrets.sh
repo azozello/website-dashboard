@@ -6,8 +6,8 @@
 #      - Only names in ALLOWED are taken; anything else is skipped (its value is never printed).
 #      - An empty value never overwrites: an unset GitHub secret leaves the server's value alone.
 #      - Values are written single-quoted (literal for Compose); a value containing ' is refused.
-# 2. Generates server-only values that are missing (BETTER_AUTH_SECRET never leaves the server) and fills
-#    MAIL_FROM with a default.
+# 2. Generates server-only values that are missing (BETTER_AUTH_SECRET and TOKEN_ENCRYPTION_KEY never leave the
+#    server) and fills MAIL_FROM with a default.
 #
 # Interactive runs (stdin is a terminal) skip step 1. Prints names only, never values.
 set -euo pipefail
@@ -53,6 +53,12 @@ current() {
 if [ -z "$(current BETTER_AUTH_SECRET)" ] && [ -z "${set_to[BETTER_AUTH_SECRET]:-}" ]; then
   set_to[BETTER_AUTH_SECRET]="$(openssl rand -base64 48)"
   generated+=(BETTER_AUTH_SECRET)
+fi
+# Normally written by cloud-init on first boot; generated here for servers created before it was. Never rotate it:
+# stored Search Console tokens can only be decrypted with the key they were sealed with.
+if [ -z "$(current TOKEN_ENCRYPTION_KEY)" ]; then
+  set_to[TOKEN_ENCRYPTION_KEY]="$(openssl rand -base64 32)"
+  generated+=(TOKEN_ENCRYPTION_KEY)
 fi
 if [ -z "$(current MAIL_FROM)" ] && [ -z "${set_to[MAIL_FROM]:-}" ]; then
   domain="$(current DOMAIN)"

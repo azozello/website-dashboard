@@ -259,12 +259,18 @@ function explain(c: Check, { data, navigate, startLive, live, liveDone }: Ctx): 
       };
     case 'csp_ok':
       return notYet('The page scanner, which reads your homepage’s Content-Security-Policy header,');
-    case 'gsc_connected':
-      if (c.status === 'pass') return { text: `Connected to ${c.detail?.property}.` };
-      if (c.reason === 'gsc_not_available') return notYet('The Search Console connection');
-      if (c.reason === 'no_property') return { text: 'Connected, but no Search Console property matches this website.' };
-      if (c.reason === 'connection_inactive') return { text: 'The Search Console connection stopped working. Connect it again.' };
-      return { text: 'Connect Search Console to see the search terms that bring visitors.' };
+    case 'gsc_connected': {
+      const go = (label: string) => <p>{toSettings('search-console', label)}</p>;
+      if (c.status === 'pass') return { text: `Connected to ${c.detail?.property}.${lastSeen(c, 'import')}` };
+      if (c.reason === 'gsc_not_available') return { text: "This server isn't set up to connect Search Console yet, so this can't be checked." };
+      if (c.reason === 'no_property') return { text: 'Connected, but the Search Console property for this website still has to be chosen.', fix: go('Choose the property') };
+      if (c.reason === 'connection_inactive')
+        return {
+          text: c.detail?.error === 'token_revoked' ? 'Google ended the Search Console access. Connect it again.' : 'The Search Console connection stopped working. Connect it again.',
+          fix: go('Connect again'),
+        };
+      return { text: 'Connect Search Console to see the search terms that bring visitors.', fix: go('Connect Search Console') };
+    }
     default:
       return { text: c.reason };
   }
