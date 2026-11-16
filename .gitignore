@@ -1,0 +1,4 @@
+
+# Google OAuth client downloads: never commit
+creds.json
+client_secret*.json

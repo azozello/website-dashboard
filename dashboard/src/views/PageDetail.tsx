@@ -10,6 +10,7 @@ import { SOURCE_NAME, type Page } from '../data/model';
 import { useSiteData } from '../data/stats';
 import { useDashboard } from '../state';
 import { FunnelPanel, RouteRows } from './SiteViews';
+import { SearchNote, TermTable, throughText } from './search';
 import { RequestTable } from './shared';
 
 const SCROLL_POINTS: [keyof Page['bd']['scroll'], string][] = [
@@ -206,7 +207,17 @@ export function PageDetail({ page: p }: { page: Page }) {
       {funnels.length > 0 && routePanel}
 
       <Panel title="Search terms for this page">
-        <p className="note">Search terms come from Google Search Console, which can’t be connected yet.</p>
+        {p.search.terms.length ? (
+          <>
+            <p className="note">
+              Google search: {fi(p.search.clicks)} clicks from {fi(p.search.impressions)} times shown in results
+              {p.search.position !== null ? `, average position ${p.search.position.toFixed(1)}` : ''}. {throughText(d.search)}
+            </p>
+            <TermTable terms={p.search.terms} />
+          </>
+        ) : (
+          <SearchNote s={d.search} empty="Google reports no search terms for this page in this period." />
+        )}
       </Panel>
 
       <Panel title="Latest requests through this page">

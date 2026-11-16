@@ -7,6 +7,7 @@ import { fi, fp, fp0, mmss } from '../lib/format';
 import { FLOW_NAME, SOURCE_NAME, type Funnel, type Page, type RouteRow, type SiteData } from '../data/model';
 import { useSiteData } from '../data/stats';
 import { useDashboard } from '../state';
+import { SearchNote, TermTable, throughText } from './search';
 import { pageName, PathLink, RequestTable } from './shared';
 
 function SiteHead({ title, range, children }: { title: string; range: Range; children: ReactNode }) {
@@ -34,17 +35,25 @@ const RateCell = ({ k, n, max }: { k: number; n: number; max: number }) => (
 /* ---------- Search terms ---------- */
 
 export function SearchTerms() {
-  const { range } = useAllStats();
+  const { range, d } = useAllStats();
+  const s = d.search;
   return (
     <>
       <SiteHead title="Search terms" range={range}>
         Every search term that brings visitors from Google, with the page they land on.
       </SiteHead>
       <Panel title="All search terms">
-        <p className="note">
-          Search terms come from Google Search Console. Connecting it isn’t available yet; until then, Sources shows how many visits come from Google
-          search.
-        </p>
+        {s.terms.length ? (
+          <>
+            <p className="note">
+              Google search: {fi(s.clicks)} clicks from {fi(s.impressions)} times shown in results. Google leaves out rarely searched terms to protect
+              privacy, so the terms below add up to less. {throughText(s)}
+            </p>
+            <TermTable terms={s.terms} withPage />
+          </>
+        ) : (
+          <SearchNote s={s} empty="Google reports no search terms for this website in this period." />
+        )}
       </Panel>
     </>
   );

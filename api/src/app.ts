@@ -2,6 +2,8 @@ import Fastify, { LogController, type FastifyInstance } from 'fastify';
 import { createAuth, type Auth } from './auth.ts';
 import type { Settings } from './config.ts';
 import { createPool, type Db } from './db.ts';
+import { createGoogleApi, type GoogleApi } from './google.ts';
+import { createGsc, registerGsc, type Gsc } from './gsc.ts';
 import { createMailer, type Mailer } from './mail.ts';
 import { registerChecks } from './checks.ts';
 import { registerRoutes } from './routes.ts';
@@ -14,9 +16,12 @@ export interface App {
   auth: Auth;
   db: Db;
   mailer: Mailer;
+  /** Search Console connection and sync; main.ts starts its daily scheduler. */
+  gsc: Gsc;
 }
 
-export async function buildApp(settings: Settings, opts: { logger?: boolean } = {}): Promise<App> {
+/** opts.google: stands in for Google (tests); by default the real API when GOOGLE_CLIENT_ID/SECRET are set. */
+export async function buildApp(settings: Settings, opts: { logger?: boolean; google?: GoogleApi } = {}): Promise<App> {
   const db = createPool(settings.databaseUrl);
   const mailer = createMailer(settings.smtpUrl, settings.mailFrom);
   const auth = createAuth(settings, db, mailer);
@@ -29,7 +34,12 @@ export async function buildApp(settings: Settings, opts: { logger?: boolean } = 
   });
   app.decorateRequest('principal', null);
   app.decorateRequest('tenant', null);
-  app.addHook('onClose', async () => db.end());
+  const google = opts.google ?? (settings.google ? createGoogleApi(settings.google) : null);
+  const gsc = createGsc(db, settings, google, app.log);
+  app.addHook('onClose', async () => {
+    await gsc.idle();
+    await db.end();
+  });
 
   // Better Auth speaks the Fetch API. In its own scope, pass the raw body through
   // untouched instead of letting Fastify parse it.
@@ -64,8 +74,9 @@ export async function buildApp(settings: Settings, opts: { logger?: boolean } = 
   const guards = createGuards(auth, db);
   registerRoutes(app, db, guards, settings);
   registerSiteConfig(app, db, guards);
-  registerChecks(app, db, guards, settings);
-  registerStats(app, db, guards);
+  registerChecks(app, db, guards, settings, gsc.available);
+  registerStats(app, db, guards, gsc.available);
+  registerGsc(app, db, guards, gsc, google);
 
-  return { app, auth, db, mailer };
+  return { app, auth, db, mailer, gsc };
 }

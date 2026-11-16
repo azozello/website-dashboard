@@ -4,14 +4,15 @@ import { expect } from 'vitest';
 import { buildApp, type App } from '../src/app.ts';
 import { loadSettings } from '../src/config.ts';
 import { createPool, migrate } from '../src/db.ts';
+import type { GoogleApi } from '../src/google.ts';
 
 /** Server that owns the throwaway test databases (the dev container from docker-compose.dev.yml). */
 const ADMIN_URL = process.env.TEST_DATABASE_URL || 'postgres://rate1:rate1@127.0.0.1:5434/rate1';
 export const BASE = 'http://localhost:5173';
 export const PASSWORD = 'correct-horse-battery';
 
-/** A migrated, empty database of its own, and the app on top of it. */
-export async function freshApp(name: string): Promise<App> {
+/** A migrated, empty database of its own, and the app on top of it. opts.google: a fake Google (Search Console tests). */
+export async function freshApp(name: string, opts: { google?: GoogleApi } = {}): Promise<App> {
   const dbName = `rate1_api_test_${name}`;
   const admin = new pg.Client({ connectionString: ADMIN_URL });
   await admin.connect();
@@ -24,7 +25,7 @@ export async function freshApp(name: string): Promise<App> {
   await migrate(db);
   await db.end();
   const settings = loadSettings({ DATABASE_URL: url, APP_BASE_URL: BASE, RATE_LIMIT: 'off' } as NodeJS.ProcessEnv);
-  return buildApp(settings, { logger: false });
+  return buildApp(settings, { logger: false, google: opts.google });
 }
 
 interface Res {
@@ -53,8 +54,11 @@ export class Browser {
   put(url: string, body: unknown) {
     return this.send('PUT', url, body);
   }
+  del(url: string) {
+    return this.send('DELETE', url);
+  }
 
-  async send(method: 'GET' | 'POST' | 'PATCH' | 'PUT', url: string, body?: unknown): Promise<Res> {
+  async send(method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE', url: string, body?: unknown): Promise<Res> {
     const headers: Record<string, string> = { origin: BASE };
     if (this.jar.size) headers.cookie = [...this.jar].map(([k, v]) => `${k}=${v}`).join('; ');
     if (body !== undefined) headers['content-type'] = 'application/json';
