@@ -1,7 +1,7 @@
 import QRCode from 'qrcode';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { authClient, errorText, type Role } from './client';
+import { ApiError, api, authClient, errorText, type Role } from './client';
 import { UserMenu } from './menus';
 import { useMe } from './session';
 import { ErrorLine, Field, Logo } from './ui';
@@ -247,17 +247,29 @@ interface FullOrg {
 }
 
 const RANK: Record<Role, number> = { member: 1, admin: 2, owner: 3 };
+const ROLE_NAME: Record<Role, string> = { member: 'Member', admin: 'Admin', owner: 'Owner' };
+const PLATFORM_NAME = { wordpress: 'WordPress', wix: 'Wix', php: 'PHP' } as const;
+
+/** Highest role in Better Auth's role field (a comma-separated list). */
+const topRole = (field: string): Role =>
+  field
+    .split(',')
+    .map((r) => r.trim())
+    .filter((r): r is Role => r in RANK)
+    .sort((a, b) => RANK[b] - RANK[a])[0] ?? 'member';
 
 export function Members() {
   const { orgId = '' } = useParams();
-  const { me } = useMe();
+  const { me, refresh } = useMe();
   const mine = me.orgs.find((o) => o.id === orgId);
   const canManage = mine ? RANK[mine.role] >= RANK.admin : false;
   const [org, setOrg] = useState<FullOrg | null>(null);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'member' | 'admin'>('member');
   const [error, setError] = useState('');
+  const [peopleError, setPeopleError] = useState('');
   const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState('');
 
   const load = useCallback(async () => {
     const { data, error } = await authClient.organization.getFullOrganization({ query: { organizationId: orgId } });
@@ -271,11 +283,12 @@ export function Members() {
 
   if (!mine) {
     return (
-      <SettingsShell title="Members">
+      <SettingsShell title="Organisation">
         <p className="err">This organisation doesn't exist or you're not a member.</p>
       </SettingsShell>
     );
   }
+  const isOwner = mine.role === 'owner';
 
   async function invite(e: FormEvent) {
     e.preventDefault();
@@ -288,17 +301,26 @@ export function Members() {
     await load();
   }
 
-  async function act(p: Promise<{ error: { message?: string; status?: number } | null }>) {
+  async function act(p: Promise<{ error: { message?: string; status?: number } | null }>, show = setError) {
     setError('');
+    setPeopleError('');
     const { error } = await p;
-    if (error) setError(errorText(error));
+    if (error) show(errorText(error));
     await load();
+  }
+
+  /** The server applies Better Auth's rules: only owners touch owners, and the last owner can't step down. */
+  async function changeRole(m: FullOrg['members'][number], to: Role) {
+    setBusy(m.id);
+    await act(authClient.organization.updateMemberRole({ memberId: m.id, role: to, organizationId: orgId }), setPeopleError);
+    if (m.userId === me.user.userId) await refresh(); // your own role changes what this page offers
+    setBusy('');
   }
 
   const pending = org?.invitations.filter((i) => i.status === 'pending') ?? [];
 
   return (
-    <SettingsShell title={`Members of ${mine.name}`} orgId={orgId}>
+    <SettingsShell title={mine.name} orgId={orgId}>
       <Card title="People">
         {!org ? (
           <p className="muted">Loading…</p>
@@ -315,17 +337,38 @@ export function Members() {
             <tbody>
               {org.members.map((m) => {
                 const self = m.userId === me.user.userId;
-                const removable = canManage && !self && (m.role !== 'owner' || mine.role === 'owner');
+                const current = topRole(m.role);
+                const editable = canManage && (current !== 'owner' || isOwner);
+                const removable = editable && !self;
                 return (
                   <tr key={m.id}>
                     <td>
                       {m.user.name} {self && <span className="muted">(you)</span>}
                     </td>
                     <td>{m.user.email}</td>
-                    <td>{m.role}</td>
+                    <td>
+                      {editable ? (
+                        <select
+                          className="role-select"
+                          aria-label={`Role of ${m.user.name || m.user.email}`}
+                          value={current}
+                          disabled={busy === m.id}
+                          onChange={(e) => changeRole(m, e.target.value as Role)}
+                        >
+                          <option value="member">Member</option>
+                          <option value="admin">Admin</option>
+                          {isOwner && <option value="owner">Owner</option>}
+                        </select>
+                      ) : (
+                        ROLE_NAME[current]
+                      )}
+                    </td>
                     <td>
                       {removable && (
-                        <button className="lnk danger" onClick={() => act(authClient.organization.removeMember({ memberIdOrEmail: m.id, organizationId: orgId }))}>
+                        <button
+                          className="lnk danger"
+                          onClick={() => act(authClient.organization.removeMember({ memberIdOrEmail: m.id, organizationId: orgId }), setPeopleError)}
+                        >
                           Remove
                         </button>
                       )}
@@ -336,8 +379,14 @@ export function Members() {
             </tbody>
           </table>
         )}
-        <p className="muted">Owners and admins can add websites, change settings and invite people. Members can view.</p>
+        <ErrorLine>{peopleError}</ErrorLine>
+        <p className="muted">
+          Members can view. Admins can also add websites, change settings and invite people. Owners can also delete websites and make
+          others owners.
+        </p>
       </Card>
+
+      <Websites orgId={orgId} isOwner={isOwner} />
 
       {canManage && (
         <Card title="Invite someone">
@@ -373,5 +422,91 @@ export function Members() {
       )}
       {!canManage && <ErrorLine>{error}</ErrorLine>}
     </SettingsShell>
+  );
+}
+
+/* ---------- Websites of an organisation ---------- */
+
+function Websites({ orgId, isOwner }: { orgId: string; isOwner: boolean }) {
+  const { me, refresh } = useMe();
+  const sites = me.sites.filter((s) => s.orgId === orgId);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [typed, setTyped] = useState('');
+  const [error, setError] = useState('');
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  function open(siteId: string | null) {
+    setConfirming(siteId);
+    setTyped('');
+    setError('');
+    setMsg('');
+  }
+
+  async function remove(e: FormEvent, site: { id: string; name: string }) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/api/sites/${encodeURIComponent(site.id)}`, { method: 'DELETE' });
+      open(null);
+      setMsg(`${site.name} was deleted.`);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof ApiError && err.status === 403 ? 'Only owners can delete a website.' : "Couldn't delete the website. Try again.");
+    }
+    setBusy(false);
+  }
+
+  return (
+    <Card title="Websites">
+      {sites.length === 0 ? (
+        <p className="muted">No websites yet.</p>
+      ) : (
+        <ul className="plain site-list">
+          {sites.map((s) => (
+            <li key={s.id}>
+              <div className="site-row">
+                <Link to={`/s/${s.id}`}>{s.name}</Link>
+                <span className="muted">{PLATFORM_NAME[s.platform]}</span>
+                {isOwner && confirming !== s.id && (
+                  <button className="lnk danger" onClick={() => open(s.id)}>
+                    Delete…
+                  </button>
+                )}
+              </div>
+              {confirming === s.id && (
+                <form className="form narrow danger-box" onSubmit={(e) => remove(e, s)}>
+                  <p>
+                    <b>Delete {s.name} and everything recorded for it:</b> visits, page views, clicks, requests and its settings. This can't
+                    be undone, and the tracking code on the website stops sending data.
+                  </p>
+                  <Field
+                    label="Type the website's name to confirm"
+                    autoFocus
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder={s.name}
+                    value={typed}
+                    onChange={(e) => setTyped(e.target.value)}
+                  />
+                  <ErrorLine>{error}</ErrorLine>
+                  <div className="row">
+                    <button className="btn danger" disabled={busy || typed.trim() !== s.name.trim()}>
+                      Delete website
+                    </button>
+                    <button type="button" className="btn" onClick={() => open(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {msg && <p className="ok">{msg}</p>}
+      {!isOwner && sites.length > 0 && <p className="muted">Only owners can delete a website.</p>}
+    </Card>
   );
 }

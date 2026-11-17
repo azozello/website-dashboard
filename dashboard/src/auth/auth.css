@@ -75,6 +75,15 @@
 .members{width:100%;border-collapse:collapse;font-size:14px}
 .members th,.members td{padding:8px 6px;border-bottom:1px solid var(--line-soft);text-align:left}
 .members th{color:var(--muted);font-weight:600;font-size:13px}
+.role-select{min-height:36px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font:inherit;color:var(--ink)}
+.role-select:focus{outline:2px solid var(--r1);outline-offset:0;border-color:transparent}
+.site-list{gap:0}
+.site-list>li{padding:10px 0;border-bottom:1px solid var(--line-soft);display:flex;flex-direction:column;gap:12px}
+.site-list>li:last-child{border-bottom:0}
+.site-row{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 12px;font-size:14px}
+.site-row a{color:var(--r1);font-weight:600}
+.site-row .lnk{margin-left:auto}
+.danger-box{padding:14px 16px;border:1px solid #E9C9AE;border-radius:10px;background:var(--warn-soft)}
 
 @media (max-width:820px){
   /* Row 2: website switcher, account button on the right */

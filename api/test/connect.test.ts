@@ -1,9 +1,8 @@
 import crypto from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { App } from '../src/app.ts';
-import { Browser, freshApp, signUpVerified } from './helpers.ts';
+import { Browser, freshApp, signUpVerified, type TestApp } from './helpers.ts';
 
-let t: App;
+let t: TestApp;
 let alice: Browser;
 let bob: Browser;
 let aliceOrg = '';
@@ -47,7 +46,7 @@ describe('connect a new WordPress site', () => {
     expect(x.status).toBe(200);
     expect(x.json.site_key).toBe(site.json.siteKey);
     expect(x.json.site_secret).toMatch(/^sk_[0-9A-Za-z]{40}$/);
-    const { rows } = await t.db.query('SELECT site_secret_hash FROM sites WHERE id = $1', [r.json.siteId]);
+    const { rows } = await t.sql.query('SELECT site_secret_hash FROM sites WHERE id = $1', [r.json.siteId]);
     expect(rows[0].site_secret_hash).toBe(sha(x.json.site_secret));
 
     expect((await exchange(back.searchParams.get('code')!)).status).toBe(400); // single use
@@ -56,13 +55,13 @@ describe('connect a new WordPress site', () => {
 
 describe('connect an existing site', () => {
   it('rotates its secret and keeps its key', async () => {
-    const before = (await t.db.query('SELECT site_key, site_secret_hash FROM sites WHERE id = $1', [wpSite])).rows[0];
+    const before = (await t.sql.query('SELECT site_key, site_secret_hash FROM sites WHERE id = $1', [wpSite])).rows[0];
     const r = await start(alice, aliceOrg, { homeUrl: 'https://wp.example', returnUrl: returnFor('https://wp.example'), state: 'abcdefgh', siteId: wpSite });
     expect(r.status, JSON.stringify(r.json)).toBe(200);
     expect(r.json.siteId).toBe(wpSite);
     const x = await exchange(codeOf(r.json.redirectUrl));
     expect(x.json.site_key).toBe(before.site_key);
-    const after = (await t.db.query('SELECT site_secret_hash FROM sites WHERE id = $1', [wpSite])).rows[0];
+    const after = (await t.sql.query('SELECT site_secret_hash FROM sites WHERE id = $1', [wpSite])).rows[0];
     expect(after.site_secret_hash).not.toBe(before.site_secret_hash);
     expect(after.site_secret_hash).toBe(sha(x.json.site_secret));
   });
@@ -102,7 +101,7 @@ describe('who may connect, and where the code may go', () => {
   it('expired and unknown codes are refused', async () => {
     const r = await start(alice, aliceOrg, { homeUrl: 'https://wp.example', returnUrl: returnFor('https://wp.example'), state: 'abcdefgh', siteId: wpSite });
     const code = codeOf(r.json.redirectUrl);
-    await t.db.query(`UPDATE connect_codes SET expires_at = now() - interval '1 second' WHERE code_hash = $1`, [sha(code)]);
+    await t.sql.query(`UPDATE connect_codes SET expires_at = now() - interval '1 second' WHERE code_hash = $1`, [sha(code)]);
     expect((await exchange(code)).status).toBe(400);
     expect((await exchange('A'.repeat(43))).status).toBe(400);
     expect((await exchange('short')).status).toBe(400);

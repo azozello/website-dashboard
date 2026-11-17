@@ -39,6 +39,18 @@ Runs TypeScript directly (Node ≥ 22.18 type stripping), no build step. Without
 
 The session's active organisation never grants access. A site with `org_id = NULL` (e.g. created by ingest's CLI) is visible to nobody until assigned.
 
+Member roles are changed through Better Auth (`POST /api/auth/organization/update-member-role`), which enforces: admins and owners may change roles; only an owner may change an owner's role or make someone an owner; the last owner can't step down. A new role applies on the next request.
+
+**Row-level security** is the second layer, in Postgres (`migrations/008_rls.sql`). The app connects as `app_rw`, which is subject to it. Routes use the tenant pool (`createTenantPool` in `src/db.ts`): each request runs in its own `actor` (AsyncLocalStorage, entered in `app.ts`), the guard puts the signed-in user in it, and every connection the pool hands out first gets `app.user_id` set to that user (`''` without one). The policies then allow:
+
+| Table | Read | Insert / update | Delete |
+| --- | --- | --- | --- |
+| `sites` | member of `org_id` | admin of `org_id` | owner of `org_id` |
+| `site_config` | member | admin | only with its site |
+| `visits`, `pageviews`, `clicks`, `flow_steps`, `requests`, `plugin_status` | member | no (no grant either) | only with its site |
+
+So a handler that forgets its site filter, or trusts an id from the body, gets nothing of other tenants; outside a request, or before the guard ran, it gets nothing at all. Better Auth has a pool of its own; its tables have no row-level security. Table owners and superusers bypass the policies: migrations run as the superuser, and `ingest_rw` (which owns the tracking tables and `sites`) also has explicit allow-all policies, because the collector authenticates sites by key, not by user. Work that has no signed-in user (a background job, a public endpoint) sees no tenant rows through the tenant pool; give it a narrow `SECURITY DEFINER` function instead of a way around the policies. A new table with tenant data needs its own policies (template at the top of `008_rls.sql`).
+
 ## Endpoints
 
 | Method | Path | Guard | |
@@ -61,6 +73,7 @@ The session's active organisation never grants access. A site with `org_id = NUL
 | PUT | `/api/sites/:siteId/gsc/property` | admin | `{property}`: choose among the matching properties; starts an import |
 | POST | `/api/sites/:siteId/gsc/sync` | admin | import now (202); 409 unless active |
 | DELETE | `/api/sites/:siteId/gsc` | admin | disconnect: deletes token and imported rows; revokes the Google grant unless another site uses the same account |
+| DELETE | `/api/sites/:siteId` | owner | delete the site with its config and all tracking data (irreversible; the collector drops its key within 30 s) |
 | GET | `/healthz` | public | `{ ok, version }` |
 
 **Request rules** (`src/site-config.ts`): the editor works on one list; on save, rules become `request_rules` entries (`{method, form, source?, form_id?, path?, counts}`, contract README edit #6) and browser rules with selectors also become `forms_browser` entries. Each form must have exactly one rule with `counts: true` (§5). Typed paths (booking, thank-you, section pages) are normalised with the §1 rule before storing.
@@ -69,7 +82,7 @@ The session's active organisation never grants access. A site with `org_id = NUL
 
 **Report data** (`src/stats.ts`): raw counts read from ingest's tables; the dashboard computes rates and ranges. Test visits and everything linked to them are left out; a counted request is `counts AND NOT spam`; weeks start Monday in the site's timezone. Pages use the landing-page credit mode (§11 PoC default). Without ingest's tables the response is empty.
 
-**Search Console** (`src/gsc.ts`, `src/google.ts`, `src/seal.ts`): a per-site grant, separate from Google sign-in, same OAuth client. Redirect URI `<APP_BASE_URL>/api/gsc/callback`, scope `webmasters.readonly` (plus `openid email` to show which account). Refresh tokens are sealed with AES-256-GCM (`TOKEN_ENCRYPTION_KEY`, bound to the site id). Property: the account's only domain property covering one of the site's hosts, else its only root URL-prefix property on an allowed origin; otherwise an admin chooses. Import: Search Analytics by (date, page) and (date, page, query); page URLs become §1 paths and only the site's hosts are kept; the first import reads 425 days, later ones re-read the last 5 days; daily (hourly check in `main.ts`, due after 20 h). Google refusing the token (revoked; 7 days old while the OAuth app is in Testing) or the property sets `status = 'error'`: connect again. The sync runs with `app.job = 'gsc_sync'` on its connection, which the row-level security policies in `007_gsc.sql` recognise.
+**Search Console** (`src/gsc.ts`, `src/google.ts`, `src/seal.ts`): a per-site grant, separate from Google sign-in, same OAuth client. Redirect URI `<APP_BASE_URL>/api/gsc/callback`, scope `webmasters.readonly` (plus `openid email` to show which account). Refresh tokens are sealed with AES-256-GCM (`TOKEN_ENCRYPTION_KEY`, bound to the site id). Property: the account's only domain property covering one of the site's hosts, else its only root URL-prefix property on an allowed origin; otherwise an admin chooses. Import: Search Analytics by (date, page) and (date, page, query); page URLs become §1 paths and only the site's hosts are kept; the first import reads 425 days, later ones re-read the last 5 days; daily (hourly check in `main.ts`, due after 20 h). Google refusing the token (revoked; 7 days old while the OAuth app is in Testing) or the property sets `status = 'error'`: connect again. The sync runs with `app.job = 'gsc_sync'` on its connection, which the row-level security policies in `008_rls.sql` recognise.
 
 New dashboard data endpoints go under `/api/sites/:siteId/…` with `preHandler: requireSite('member')` and filter every query by `request.tenant.siteId`.
 
@@ -80,8 +93,11 @@ New dashboard data endpoints go under `/api/sites/:siteId/…` with `preHandler:
 - `001_sites.sql`: `sites`, `site_config` exactly as in `ingest/migrations/001_init.sql`, `IF NOT EXISTS` (for an empty dev database).
 - `002_auth.sql`: Better Auth schema, generated from `src/auth.ts`. Regenerate into a new migration when upgrading Better Auth or changing plugins.
 - `003_tenancy.sql`: `sites.org_id` (nullable, `ON DELETE SET NULL`), unique membership per (org, user), grants.
-- `006_site_checks.sql`: `site_checks` (§10, one row per site and check id). Row-level security policies when the RLS migration has already run.
-- `007_gsc.sql`: `gsc_connections`, `gsc_daily` (§10; `query` NULL = page total), `gsc_oauth_states`. Row-level security policies (incl. the sync job's) when the RLS migration has already run; if it runs later, it must add them.
+- `006_site_checks.sql`: `site_checks` (§10, one row per site and check id). Row-level security comes from `008_rls.sql`.
+- `007_gsc.sql`: `gsc_connections`, `gsc_daily` (§10; `query` NULL = page total), `gsc_oauth_states`. Row-level security comes from `008_rls.sql`.
+- `008_rls.sql`: row-level security on `sites`, `site_config`, `site_checks`, the Search Console tables (`gsc_*`, plus what the sync job may do) and, when ingest has created them, the tracking tables; helper functions `app_user_orgs(min_role)`, `app_user_sites(min_role)`. Idempotent (drops its policies before creating them), so databases that ran the earlier `005_rls.sql` of this change take it too. Runs last everywhere, so tests see the same order as production.
+
+Tests connect as `app_rw` (created on the test server if missing, password `app_rw`), so row-level security applies to them as in production; `t.sql` is a superuser pool for setup and assertions. `npm run dev` with the `.env.example` URL connects as the superuser, which bypasses row-level security; point `DATABASE_URL` at `app_rw` to develop with it. To keep test runs apart from another checkout's, use a server of their own: `TEST_DATABASE_URL=postgres://rate1:rate1@127.0.0.1:<port>/rate1 npm test`.
 
 ## Environment
 
@@ -122,6 +138,4 @@ The code buys the secret, so it may only go back to the WordPress site: `return_
 
 ## Not done yet
 
-- Postgres row-level security as a second layer behind the guards.
-- Changing a member's role from the UI (Better Auth supports it; no screen yet).
 - Google sign-in was not exercised end to end (needs a Google OAuth client).

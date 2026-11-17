@@ -27,9 +27,9 @@ Emails sent in development (confirmation links, sign-in codes, invitations) appe
 
 Signed out: `/login` · `/signup` · `/check-email` · `/forgot-password` · `/reset-password` · `/two-factor` · `/invite/:id`
 
-Signed in: `/` (last opened site, else onboarding) · `/onboarding` (create organisation, add website) · `/connect/wordpress` (the plugin's one-click connect, contract §8) · `/settings/security` (MFA, password) · `/orgs/:orgId/members` (members, invitations)
+Signed in: `/` (last opened site, else onboarding) · `/onboarding` (create organisation, add website) · `/connect/wordpress` (the plugin's one-click connect, contract §8) · `/settings/security` (MFA, password) · `/orgs/:orgId/members` (members and their roles, invitations, the organisation's websites; owners delete a website after typing its name)
 
-Per site, under `/s/:siteId`: overview · `pages/:slug` page detail (`home` for `/`) · `search-terms` · `sources` · `devices` · `contact-options` · `click-paths` · `changes` · `requests` · `setup` (setup checklist, contract §12) · `settings`, `settings/tracking`, `settings/requests` (name and allowed addresses; sections, booking pages, page changes without reload; request rules). Members see settings read-only.
+Per site, under `/s/:siteId`: overview · `pages/:slug` page detail (`home` for `/`) · `search-terms` · `sources` · `devices` · `contact-options` · `click-paths` · `changes` · `requests` · `setup` (setup checklist, contract §12) · `settings`, `settings/tracking`, `settings/requests`, `settings/search-console` (name and allowed addresses; sections, booking pages, page changes without reload; request rules; Search Console connection). Members see settings read-only.
 
 The UI only offers sites listed by `/api/me`; the API checks access again on every call.
 

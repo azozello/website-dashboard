@@ -1,4 +1,7 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { expect } from 'vitest';
 import { buildApp, type App } from '../src/app.ts';
@@ -11,21 +14,58 @@ const ADMIN_URL = process.env.TEST_DATABASE_URL || 'postgres://rate1:rate1@127.0
 export const BASE = 'http://localhost:5173';
 export const PASSWORD = 'correct-horse-battery';
 
-/** A migrated, empty database of its own, and the app on top of it. opts.google: a fake Google (Search Console tests). */
-export async function freshApp(name: string, opts: { google?: GoogleApi } = {}): Promise<App> {
+export interface TestApp extends App {
+  /** Superuser pool on the test database for setup and assertions; bypasses row-level security. */
+  sql: pg.Pool;
+}
+
+const INGEST_MIGRATIONS = fileURLToPath(new URL('../../ingest/migrations/', import.meta.url));
+
+/** Cluster-wide service role (infra/postgres/initdb/10-roles.sh); the migrations grant it its tables. */
+async function ensureRole(admin: pg.Client, role: 'app_rw' | 'ingest_rw') {
+  try {
+    await admin.query(`CREATE ROLE ${role} LOGIN PASSWORD '${role}'`);
+  } catch (err) {
+    // 42710: exists already; 23505: another test file created it at the same moment
+    if (!['42710', '23505'].includes((err as { code?: string }).code ?? '')) throw err;
+  }
+}
+
+/** Connection string for `db` on the test server, as `role` (default: the superuser of TEST_DATABASE_URL). */
+export function dbUrl(db: string, role?: 'app_rw' | 'ingest_rw') {
+  const url = new URL(ADMIN_URL);
+  url.pathname = `/${db}`;
+  if (role) [url.username, url.password] = [role, role];
+  return url.toString();
+}
+
+/**
+ * A migrated, empty database of its own, and the app on top of it. Like when deployed, the app connects
+ * as app_rw, which is not a superuser, so row-level security applies to it (migrations/008_rls.sql).
+ * `ingest: true` first applies ingest's schema (tracking tables), as a deploy does. `google`: a fake Google
+ * (Search Console tests).
+ */
+export async function freshApp(name: string, opts: { ingest?: boolean; google?: GoogleApi } = {}): Promise<TestApp> {
   const dbName = `rate1_api_test_${name}`;
   const admin = new pg.Client({ connectionString: ADMIN_URL });
   await admin.connect();
+  await ensureRole(admin, 'app_rw');
+  if (opts.ingest) await ensureRole(admin, 'ingest_rw');
   await admin.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
   await admin.query(`CREATE DATABASE ${dbName}`);
   await admin.end();
 
-  const url = ADMIN_URL.replace(/\/[^/]*$/, `/${dbName}`);
-  const db = createPool(url);
-  await migrate(db);
-  await db.end();
-  const settings = loadSettings({ DATABASE_URL: url, APP_BASE_URL: BASE, RATE_LIMIT: 'off' } as NodeJS.ProcessEnv);
-  return buildApp(settings, { logger: false, google: opts.google });
+  const sql = createPool(dbUrl(dbName), 2);
+  if (opts.ingest) {
+    for (const f of fs.readdirSync(INGEST_MIGRATIONS).filter((f) => f.endsWith('.sql')).sort()) {
+      await sql.query(fs.readFileSync(path.join(INGEST_MIGRATIONS, f), 'utf8'));
+    }
+  }
+  await migrate(sql);
+  const settings = loadSettings({ DATABASE_URL: dbUrl(dbName, 'app_rw'), APP_BASE_URL: BASE, RATE_LIMIT: 'off' } as NodeJS.ProcessEnv);
+  const t = await buildApp(settings, { logger: false, google: opts.google });
+  t.app.addHook('onClose', async () => sql.end());
+  return { ...t, sql };
 }
 
 interface Res {
@@ -54,7 +94,7 @@ export class Browser {
   put(url: string, body: unknown) {
     return this.send('PUT', url, body);
   }
-  del(url: string) {
+  delete(url: string) {
     return this.send('DELETE', url);
   }
 

@@ -1,7 +1,7 @@
 import Fastify, { LogController, type FastifyInstance } from 'fastify';
 import { createAuth, type Auth } from './auth.ts';
 import type { Settings } from './config.ts';
-import { createPool, type Db } from './db.ts';
+import { actor, createPool, createTenantPool, type Db } from './db.ts';
 import { createGoogleApi, type GoogleApi } from './google.ts';
 import { createGsc, registerGsc, type Gsc } from './gsc.ts';
 import { createMailer, type Mailer } from './mail.ts';
@@ -22,9 +22,12 @@ export interface App {
 
 /** opts.google: stands in for Google (tests); by default the real API when GOOGLE_CLIENT_ID/SECRET are set. */
 export async function buildApp(settings: Settings, opts: { logger?: boolean; google?: GoogleApi } = {}): Promise<App> {
-  const db = createPool(settings.databaseUrl);
+  // Better Auth gets a pool of its own: its tables have no row-level security, and its connections
+  // never carry a user. Everything else goes through the tenant pool (see db.ts).
+  const authDb = createPool(settings.databaseUrl, 5);
+  const db = createTenantPool(settings.databaseUrl);
   const mailer = createMailer(settings.smtpUrl, settings.mailFrom);
-  const auth = createAuth(settings, db, mailer);
+  const auth = createAuth(settings, authDb, mailer);
 
   const app = Fastify({
     logger: opts.logger ?? true,
@@ -38,8 +41,11 @@ export async function buildApp(settings: Settings, opts: { logger?: boolean; goo
   const gsc = createGsc(db, settings, google, app.log);
   app.addHook('onClose', async () => {
     await gsc.idle();
-    await db.end();
+    await Promise.all([db.end(), authDb.end()]);
   });
+  // A fresh actor per request, entered after body parsing so the guards and the handler run inside it.
+  // The guards set its user; until then the tenant pool's connections carry none.
+  app.addHook('preValidation', (_req, _reply, done) => actor.run({ userId: null }, done));
 
   // Better Auth speaks the Fetch API. In its own scope, pass the raw body through
   // untouched instead of letting Fastify parse it.

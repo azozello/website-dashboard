@@ -1,10 +1,9 @@
 import crypto from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { App } from '../src/app.ts';
 import { topRole } from '../src/tenant.ts';
-import { Browser, firstUrl, freshApp, lastMail, signUpVerified } from './helpers.ts';
+import { Browser, PASSWORD, firstUrl, freshApp, lastMail, signUpVerified, type TestApp } from './helpers.ts';
 
-let t: App;
+let t: TestApp;
 let alice: Browser;
 let bob: Browser;
 const ids = { aliceOrg: '', aliceSite: '', bobOrg: '', bobSite: '' };
@@ -36,11 +35,11 @@ describe('site creation', () => {
     expect(r.json.siteKey).toMatch(/^pk_[0-9A-Za-z]{24}$/);
     expect(r.json.siteSecret).toMatch(/^sk_[0-9A-Za-z]{40}$/);
     expect(r.json.webhookUrl).toMatch(/\/v1\/w\/wh_[0-9A-Za-z]{32}$/);
-    const { rows } = await t.db.query('SELECT site_secret_hash, allowed_origins, org_id FROM sites WHERE id = $1', [r.json.site.id]);
+    const { rows } = await t.sql.query('SELECT site_secret_hash, allowed_origins, org_id FROM sites WHERE id = $1', [r.json.site.id]);
     expect(rows[0].site_secret_hash).toBe(crypto.createHash('sha256').update(r.json.siteSecret).digest('hex'));
     expect(rows[0].allowed_origins).toEqual(['https://second.example']);
     expect(rows[0].org_id).toBe(ids.aliceOrg);
-    expect((await t.db.query('SELECT 1 FROM site_config WHERE site_id = $1', [r.json.site.id])).rowCount).toBe(1);
+    expect((await t.sql.query('SELECT 1 FROM site_config WHERE site_id = $1', [r.json.site.id])).rowCount).toBe(1);
   });
 
   it('normalises origins and rejects non-URLs', async () => {
@@ -82,7 +81,7 @@ describe('isolation between tenants', () => {
   });
 
   it('a site without an organisation is visible to nobody', async () => {
-    const { rows } = await t.db.query(
+    const { rows } = await t.sql.query(
       `INSERT INTO sites (name, platform, site_key, site_secret_hash) VALUES ('orphan', 'php', 'pk_orphan', 'h_orphan') RETURNING id`,
     );
     expect((await alice.get(`/api/sites/${rows[0].id}`)).status).toBe(404);
@@ -128,6 +127,89 @@ describe('invitations and roles', () => {
     await carol.post('/api/auth/sign-in/email', { email: 'carol@physio-a.example', password: 'correct-horse-battery' });
     const r = await carol.post('/api/auth/organization/invite-member', { email: 'mallory@evil.example', role: 'owner', organizationId: ids.aliceOrg });
     expect(r.status).not.toBe(200);
+  });
+});
+
+async function signIn(email: string) {
+  const b = new Browser(t);
+  expect((await b.post('/api/auth/sign-in/email', { email, password: PASSWORD })).status).toBe(200);
+  return b;
+}
+
+/** Member id in physio-a (carol: member, dan: admin, alice: owner, from the tests above). */
+async function memberId(email: string): Promise<string> {
+  const org = await alice.get(`/api/auth/organization/get-full-organization?organizationId=${ids.aliceOrg}`);
+  return org.json.members.find((m: { user: { email: string } }) => m.user.email === email).id;
+}
+
+const setRole = (b: Browser, memberId: string, role: string) =>
+  b.post('/api/auth/organization/update-member-role', { memberId, role, organizationId: ids.aliceOrg });
+
+describe('changing roles', () => {
+  it('owner promotes a member to admin and back; it applies at once', async () => {
+    const carol = await signIn('carol@physio-a.example');
+    const cid = await memberId('carol@physio-a.example');
+    expect((await setRole(alice, cid, 'admin')).status).toBe(200);
+    expect((await carol.get('/api/me')).json.orgs[0].role).toBe('admin');
+    expect((await carol.patch(`/api/sites/${ids.aliceSite}`, { name: 'Physio A' })).status).toBe(200);
+    expect((await setRole(alice, cid, 'member')).status).toBe(200);
+    expect((await carol.patch(`/api/sites/${ids.aliceSite}`, { name: 'Physio A' })).status).toBe(403);
+  });
+
+  it('a member cannot change roles, not even their own', async () => {
+    const carol = await signIn('carol@physio-a.example');
+    expect((await setRole(carol, await memberId('carol@physio-a.example'), 'admin')).status).not.toBe(200);
+    expect((await setRole(carol, await memberId('dan@physio-a.example'), 'member')).status).not.toBe(200);
+  });
+
+  it("an admin changes members and admins, but can't touch an owner or make one", async () => {
+    const dan = await signIn('dan@physio-a.example');
+    const cid = await memberId('carol@physio-a.example');
+    expect((await setRole(dan, await memberId('alice@physio-a.example'), 'member')).status).not.toBe(200);
+    expect((await setRole(dan, cid, 'owner')).status).not.toBe(200);
+    expect((await setRole(dan, cid, 'admin')).status).toBe(200);
+    expect((await setRole(dan, cid, 'member')).status).toBe(200);
+  });
+
+  it('the last owner cannot step down; with a second owner they can', async () => {
+    const aid = await memberId('alice@physio-a.example');
+    const did = await memberId('dan@physio-a.example');
+    expect((await setRole(alice, aid, 'admin')).status).not.toBe(200);
+    expect((await setRole(alice, did, 'owner')).status).toBe(200);
+    expect((await setRole(alice, aid, 'admin')).status).toBe(200);
+    // back to alice owner, dan admin
+    const dan = await signIn('dan@physio-a.example');
+    expect((await setRole(dan, aid, 'owner')).status).toBe(200);
+    expect((await setRole(alice, did, 'admin')).status).toBe(200);
+  });
+
+  it('unknown roles and other organisations are refused', async () => {
+    expect((await setRole(alice, await memberId('carol@physio-a.example'), 'superuser')).status).toBe(400);
+    const bobOrg = await bob.get(`/api/auth/organization/get-full-organization?organizationId=${ids.bobOrg}`);
+    const bobMember = bobOrg.json.members[0].id;
+    expect((await setRole(alice, bobMember, 'member')).status).not.toBe(200);
+    expect((await alice.post('/api/auth/organization/update-member-role', { memberId: bobMember, role: 'member', organizationId: ids.bobOrg })).status).not.toBe(200);
+  });
+});
+
+describe('deleting a website', () => {
+  it('only an owner can, and the site is gone everywhere', async () => {
+    const r = await alice.post(`/api/orgs/${ids.aliceOrg}/sites`, { name: 'doomed', platform: 'wordpress', origins: ['https://doomed.example'] });
+    expect(r.status).toBe(201);
+    const url = `/api/sites/${r.json.site.id}`;
+
+    expect((await new Browser(t).delete(url)).status).toBe(401);
+    expect((await bob.delete(url)).status).toBe(404);
+    expect((await (await signIn('carol@physio-a.example')).delete(url)).status).toBe(403);
+    expect((await (await signIn('dan@physio-a.example')).delete(url)).status).toBe(403); // admin
+
+    expect((await alice.delete(url)).status).toBe(200);
+    expect((await alice.get(url)).status).toBe(404);
+    expect((await alice.delete(url)).status).toBe(404);
+    expect((await alice.get('/api/me')).json.sites.map((s: { id: string }) => s.id)).not.toContain(r.json.site.id);
+    expect((await t.sql.query('SELECT 1 FROM sites WHERE id = $1', [r.json.site.id])).rowCount).toBe(0);
+    expect((await t.sql.query('SELECT 1 FROM site_config WHERE site_id = $1', [r.json.site.id])).rowCount).toBe(0);
+    expect((await alice.get(`/api/sites/${ids.aliceSite}`)).status).toBe(200); // the others stay
   });
 });
 

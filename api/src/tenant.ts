@@ -1,7 +1,7 @@
 import { fromNodeHeaders } from 'better-auth/node';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { Auth } from './auth.ts';
-import type { Db } from './db.ts';
+import { actor, type Db } from './db.ts';
 
 /**
  * Tenant authorization.
@@ -68,6 +68,9 @@ export function createGuards(auth: Auth, db: Db) {
       reply.code(401).send({ error: 'unauthenticated' });
       return false;
     }
+    // From here on, the tenant pool's connections act for this user (row-level security, db.ts).
+    const store = actor.getStore();
+    if (store) store.userId = s.user.id;
     req.principal = {
       userId: s.user.id,
       email: s.user.email,
